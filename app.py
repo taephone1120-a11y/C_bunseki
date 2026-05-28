@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
-# 🎨 【CSS修正】タイトルの下のスペースを完全にゼロ化
+# 🎨 【CSS再調整】タイトル・区切り線・結果表示のバランスを最適化
 st.markdown("""
     <style>
     /* 画面最上部に自然な余白を確保 */
@@ -30,22 +30,22 @@ st.markdown("""
         line-height: 1.5 !important;
     }
     
-    /* 💎 タイトルの表示と、真下の余白（margin-bottom）を完全に0にする設定 */
+    /* 💎 タイトルの表示（下の余白を適度に確保） */
     h1 {
         font-size: 28px !important;
         font-weight: 700 !important;
         color: #111111 !important;
         margin-top: 0px !important;
-        margin-bottom: 0px !important;  /* 下のスペースを完全に排除 */
+        margin-bottom: 10px !important;
         padding-top: 0px !important;
         padding-bottom: 0px !important;
         display: block !important;
     }
     
-    /* タイトルのすぐ後に来る要素の上の隙間もカット */
-    h1 + div {
+    /* タイトル直下の区切り線（hr）の余白をタイトに調整 */
+    hr {
         margin-top: 0px !important;
-        padding-top: 0px !important;
+        margin-bottom: 15px !important;
     }
     
     /* サイドバーのフィルター項目も見やすい大きさに調整 */
@@ -80,8 +80,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ✂️ タイトル直下の不要な区切り線（---）を削除し、直結させました
+# 💎 タイトルを表示
 st.title("💎 Creema市場リサーチツール")
+
+# 📍 タイトルのすぐ下に線を配置
+st.markdown("---")
 
 # =============================================
 #   サイドバー：設定エリア
@@ -523,7 +526,7 @@ if st.session_state.raw_data:
         final_df["No."] = range(1, len(final_df) + 1)
     
     # =============================================
-    #   結果表示エリア
+    #   結果表示エリア（タイトルの下の線の下に配置される構成）
     # =============================================
     st.success(f"📊 条件に一致した商品: {len(final_df)} 件 / 全件中")
     
