@@ -119,8 +119,6 @@ def send_line_notification(keyword_or_url, item_count):
     
     message_text = (
         f"💎 【Creemaツール】利用通知\n\n"
-        f"今、誰かがリサーチを開始したよ！\n"
-        f"---------------------\n"
         f"▼ 検索内容:\n{keyword_or_url}\n\n"
         f"▼ 解析上限: {item_count} 件"
     )
