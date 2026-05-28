@@ -14,37 +14,31 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
-# 🎨 【デザイン微調整】最上部の余白を完全に消しつつ、ブラウザ縮小1回分の極細・コンパクト表示を実現
+# 🎨 【CSS修正】タイトルが絶対に消えないよう上部余白と表示位置を完全最適化
 st.markdown("""
     <style>
-    /* 画面最上部の無駄なスペースを削除 */
+    /* 画面全体の最上部余白を調整してタイトルを表示 */
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 2rem !important;
         padding-bottom: 1rem !important;
     }
-    div[data-testid="stHeader"] {
-        height: 0px !important;
-        background: transparent !important;
-    }
     
-    /* 全体サイズを「縮小1回分」の13px〜12pxベースに引き下げ */
+    /* 全体サイズを「縮小1回分」の12.5pxベースに引き下げ */
     html, body, [data-testid="stMarkdownContainer"] p, .stMarkdown p {
         font-size: 12.5px !important;
         font-family: "Meiryo", "Helvetica Neue", Arial, sans-serif;
         line-height: 1.4 !important;
     }
     
-    /* タイトル文字の復活とサイズ調整 */
-    .stHeading h1 {
-        font-size: 21px !important;
+    /* 💎 タイトルを確実に、綺麗に表示するための設定 */
+    h1 {
+        font-size: 24px !important;
         font-weight: 700 !important;
-        margin-top: 0px !important;
-        padding-top: 0px !important;
-        margin-bottom: 5px !important;
         color: #111111 !important;
-    }
-    .stHeading h3 {
-        font-size: 15px !important;
+        margin-top: 0px !important;
+        margin-bottom: 8px !important;
+        padding-top: 0px !important;
+        display: block !important;
     }
     
     /* サイドバーのフィルター項目・行間をギュッと凝縮 */
@@ -537,7 +531,6 @@ if st.session_state.raw_data:
     )
     
     st.subheader("👀 絞り込み結果のプレビュー")
-    # ↕️ 【縦幅の拡張】height=800を指定し、1画面に約35件ほどを一気に表示できるようにしました
     st.dataframe(
         final_df, 
         use_container_width=True,
