@@ -14,61 +14,61 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
-# 🎨 【CSS修正】タイトルが絶対に消えないよう上部余白と表示位置を完全最適化
+# 🎨 【CSS大幅見直し】文字の潰れを解消し、見やすく上品な余白感に調整
 st.markdown("""
     <style>
-    /* 画面全体の最上部余白を調整してタイトルを表示 */
+    /* 画面最上部に自然な余白を確保 */
     .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 1rem !important;
+        padding-top: 2.5rem !important;
+        padding-bottom: 2rem !important;
     }
     
-    /* 全体サイズを「縮小1回分」の12.5pxベースに引き下げ */
+    /* 潰れていた文字サイズを標準的な「14px」に引き上げ、行間もゆったりに */
     html, body, [data-testid="stMarkdownContainer"] p, .stMarkdown p {
-        font-size: 12.5px !important;
+        font-size: 14px !important;
         font-family: "Meiryo", "Helvetica Neue", Arial, sans-serif;
-        line-height: 1.4 !important;
+        line-height: 1.5 !important;
     }
     
-    /* 💎 タイトルを確実に、綺麗に表示するための設定 */
+    /* 💎 タイトルをハッキリ、大きく表示 */
     h1 {
-        font-size: 24px !important;
+        font-size: 28px !important;
         font-weight: 700 !important;
         color: #111111 !important;
         margin-top: 0px !important;
-        margin-bottom: 8px !important;
+        margin-bottom: 15px !important;
         padding-top: 0px !important;
         display: block !important;
     }
     
-    /* サイドバーのフィルター項目・行間をギュッと凝縮 */
+    /* サイドバーのフィルター項目も見やすい大きさに調整 */
     div[data-testid="stSidebarUserContent"] {
-        padding-top: 0.5rem !important;
+        padding-top: 1rem !important;
     }
     div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h5 {
-        font-size: 12px !important;
-        margin-top: 6px !important;
-        margin-bottom: 2px !important;
+        font-size: 13.5px !important;
+        margin-top: 12px !important;
+        margin-bottom: 5px !important;
         color: #111111 !important;
         font-weight: 600 !important;
     }
     
-    /* 各要素の上下の隙間を極限までカット */
+    /* 各要素の間の極端な隙間カットを解除し、自然な間隔（0.5rem）へ */
     div[data-testid="element-container"] {
-        margin-bottom: 0.2rem !important;
+        margin-bottom: 0.5rem !important;
     }
     
-    /* 入力欄（ボックス）の縦幅を極細スマートにするスタイル */
+    /* 入力欄（ボックス）が潰れないよう高さをしっかり確保 */
     .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div {
-        padding: 4px 8px !important;
-        min-height: 26px !important;
-        height: 26px !important;
-        font-size: 12px !important;
+        padding: 6px 10px !important;
+        min-height: 36px !important;
+        height: 36px !important;
+        font-size: 13.5px !important;
     }
     
-    /* 入力欄外側の余白の固定化 */
+    /* 入力欄外側の無駄な余白の最適化 */
     div[data-testid="stNumberInput"], div[data-testid="stDateInput"] {
-        margin-bottom: 0px !important;
+        margin-bottom: 8px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -434,7 +434,7 @@ if st.session_state.raw_data:
     with col_price1:
         filter_price_min = st.number_input("🪙 金額　最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
     with col_price_mid:
-        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_price2:
         filter_price_max = st.number_input("🪙 金額　最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
     
@@ -443,7 +443,7 @@ if st.session_state.raw_data:
     with col_fav1:
         filter_fav_min = st.number_input("⭐ お気に入り数　最小", min_value=0, max_value=max_fav_val, value=0, key="fav_min", label_visibility="collapsed")
     with col_fav_mid:
-        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_fav2:
         filter_fav_max = st.number_input("⭐ お気に入り数　最大", min_value=0, max_value=max_fav_val, value=max_fav_val, key="fav_max", label_visibility="collapsed")
         
@@ -452,7 +452,7 @@ if st.session_state.raw_data:
     with col_buy1:
         filter_buy_min = st.number_input("🛒 購入者数　最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
     with col_buy_mid:
-        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_buy2:
         filter_buy_max = st.number_input("🛒 購入者数　最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
         
@@ -461,7 +461,7 @@ if st.session_state.raw_data:
     with col_rev1:
         filter_rev_min = st.number_input("💬 総評価数　最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
     with col_rev_mid:
-        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_rev2:
         filter_rev_max = st.number_input("💬 総評価数　最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
     
@@ -477,7 +477,7 @@ if st.session_state.raw_data:
     with col_date1:
         filter_date_min = st.date_input("⏱️ 一番初めの評価日　開始日", value=datetime(2010, 1, 1).date(), max_value=datetime.now().date(), key="date_min", label_visibility="collapsed")
     with col_date_mid:
-        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_date2:
         filter_date_max = st.date_input("⏱️ 一番初めの評価日　終了日", value=datetime.now().date(), max_value=datetime.now().date(), key="date_max", label_visibility="collapsed")
 
