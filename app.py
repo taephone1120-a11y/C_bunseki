@@ -14,6 +14,29 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 st.set_page_config(page_title="Creema市場分析ツール", page_icon="⚡", layout="wide")
 
+# 🔍 【新機能】画面全体の文字サイズを少し小さくすっきりさせる設定
+st.markdown("""
+    <style>
+    html, body, [data-testid="stMarkdownContainer"] p {
+        font-size: 14px !important;
+        font-family: "Meiryo", "Helvetica Neue", Arial, sans-serif;
+    }
+    .stHeading h1 {
+        font-size: 24px !important;
+    }
+    .stHeading h3 {
+        font-size: 18px !important;
+    }
+    .stHeading h5 {
+        font-size: 13px !important;
+        margin-bottom: 5px !important;
+    }
+    div[data-testid="stSidebar"] {
+        font-size: 13px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("⚡ Creema市場分析ツール")
 st.markdown("---")
 
@@ -39,27 +62,19 @@ else:
 
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=50, step=10)
 
-# 🔍 【修正】「爆速」を消去してシンプルに
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # =============================================
 #   📲 LINE通知を送る関数
 # =============================================
 def send_line_notification(keyword_or_url, item_count):
-    """
-    リサーチ開始時にLINEへ通知を飛ばす関数
-    StreamlitのSecretsにトークンが設定されている場合のみ動作します。
-    """
     try:
-        # Streamlitの安全な設定管理からトークンを取得
-        # ※設定されていない場合は KeyError になるため try-except で囲んでいます
         if "line" in st.secrets and "notify_token" in st.secrets["line"]:
             token = st.secrets["line"]["notify_token"]
             
             url = "https://notify-api.line.me/api/notify"
             headers = {"Authorization": f"Bearer {token}"}
             
-            # 通知するメッセージ内容
             message = (
                 f"\n📊 Creema市場分析ツールが実行されました！"
                 f"\n【条件】{keyword_or_url}"
@@ -69,8 +84,7 @@ def send_line_notification(keyword_or_url, item_count):
             
             payload = {"message": message}
             requests.post(url, headers=headers, data=payload, timeout=5)
-    except Exception as e:
-        # バックグラウンドでの通知エラーでアプリ自体が止まらないようにスルーします
+    except Exception:
         pass
 
 # =============================================
@@ -344,7 +358,6 @@ if start_button:
     if mode == "一覧URL直貼り" and not target_url:
         st.error("⚠️ URLを入力してください。")
     else:
-        # 📲 押された瞬間にLINEに通知を送信
         cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
         send_line_notification(cond_text, max_items)
         
@@ -381,7 +394,7 @@ if st.session_state.raw_data:
     with col_price1:
         filter_price_min = st.number_input("🪙 金額　最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
     with col_price_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_price2:
         filter_price_max = st.number_input("🪙 金額　最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
     
@@ -390,7 +403,7 @@ if st.session_state.raw_data:
     with col_fav1:
         filter_fav_min = st.number_input("⭐ お気に入り数　最小", min_value=0, max_value=max_fav_val, value=0, key="fav_min", label_visibility="collapsed")
     with col_fav_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_fav2:
         filter_fav_max = st.number_input("⭐ お気に入り数　最大", min_value=0, max_value=max_fav_val, value=max_fav_val, key="fav_max", label_visibility="collapsed")
         
@@ -399,7 +412,7 @@ if st.session_state.raw_data:
     with col_buy1:
         filter_buy_min = st.number_input("🛒 購入者数　最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
     with col_buy_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_buy2:
         filter_buy_max = st.number_input("🛒 購入者数　最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
         
@@ -408,7 +421,7 @@ if st.session_state.raw_data:
     with col_rev1:
         filter_rev_min = st.number_input("💬 総評価数　最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
     with col_rev_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_rev2:
         filter_rev_max = st.number_input("💬 総評価数　最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
     
@@ -424,7 +437,7 @@ if st.session_state.raw_data:
     with col_date1:
         filter_date_min = st.date_input("⏱️ 一番初めの評価日　開始日", value=datetime(2010, 1, 1).date(), max_value=datetime.now().date(), key="date_min", label_visibility="collapsed")
     with col_date_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_date2:
         filter_date_max = st.date_input("⏱️ 一番初めの評価日　終了日", value=datetime.now().date(), max_value=datetime.now().date(), key="date_max", label_visibility="collapsed")
 
@@ -478,6 +491,8 @@ if st.session_state.raw_data:
     )
     
     st.subheader("👀 絞り込み結果のプレビュー")
+    
+    # 🔍 【新機能】データプレビュー自体の文字サイズも少し小さくして見やすく調整
     st.dataframe(
         final_df, 
         use_container_width=True,
