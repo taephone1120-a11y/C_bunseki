@@ -14,25 +14,57 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 st.set_page_config(page_title="Creema市場分析ツール", page_icon="⚡", layout="wide")
 
-# 🔍 【新機能】画面全体の文字サイズを少し小さくすっきりさせる設定
+# 🔍 【デザイン大幅調整】上の余白を消去 ＆ フィルターの行間・入力欄の縦幅を極細化
 st.markdown("""
     <style>
+    /* 1. 画面最上部のスペースを削除 */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+    div[data-testid="stHeader"] {
+        height: 0px !important;
+        background: transparent !important;
+    }
+    
+    /* 2. 画面全体の基本フォントサイズ */
     html, body, [data-testid="stMarkdownContainer"] p {
-        font-size: 14px !important;
+        font-size: 13px !important;
         font-family: "Meiryo", "Helvetica Neue", Arial, sans-serif;
     }
     .stHeading h1 {
-        font-size: 24px !important;
+        font-size: 22px !important;
+        margin-top: 0px !important;
+        padding-top: 0px !important;
     }
     .stHeading h3 {
-        font-size: 18px !important;
+        font-size: 16px !important;
     }
-    .stHeading h5 {
-        font-size: 13px !important;
-        margin-bottom: 5px !important;
+    
+    /* 3. サイドバーのフィルター行間をギュッと詰める */
+    div[data-testid="stSidebarUserContent"] {
+        padding-top: 0.5rem !important;
     }
-    div[data-testid="stSidebar"] {
+    div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+        margin-top: 2px !important;
+        margin-bottom: 2px !important;
+        font-weight: bold;
+    }
+    /* 各要素の上下の余白を詰める */
+    div[data-testid="element-container"] {
+        margin-bottom: 0.3rem !important;
+    }
+    
+    /* 4. 入力欄（ボックス）の縦幅を細くスマートにする */
+    div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input, div[data-testid="stSelectbox"] div {
+        padding-top: 4px !important;
+        padding-bottom: 4px !important;
+        min-height: 28px !important;
         font-size: 13px !important;
+    }
+    /* 入力欄の周りの余白調整 */
+    div[data-testid="stNumberInput"], div[data-testid="stDateInput"] {
+        margin-bottom: 0px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -394,7 +426,7 @@ if st.session_state.raw_data:
     with col_price1:
         filter_price_min = st.number_input("🪙 金額　最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
     with col_price_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
     with col_price2:
         filter_price_max = st.number_input("🪙 金額　最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
     
@@ -403,7 +435,7 @@ if st.session_state.raw_data:
     with col_fav1:
         filter_fav_min = st.number_input("⭐ お気に入り数　最小", min_value=0, max_value=max_fav_val, value=0, key="fav_min", label_visibility="collapsed")
     with col_fav_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
     with col_fav2:
         filter_fav_max = st.number_input("⭐ お気に入り数　最大", min_value=0, max_value=max_fav_val, value=max_fav_val, key="fav_max", label_visibility="collapsed")
         
@@ -412,7 +444,7 @@ if st.session_state.raw_data:
     with col_buy1:
         filter_buy_min = st.number_input("🛒 購入者数　最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
     with col_buy_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
     with col_buy2:
         filter_buy_max = st.number_input("🛒 購入者数　最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
         
@@ -421,7 +453,7 @@ if st.session_state.raw_data:
     with col_rev1:
         filter_rev_min = st.number_input("💬 総評価数　最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
     with col_rev_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
     with col_rev2:
         filter_rev_max = st.number_input("💬 総評価数　最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
     
@@ -437,7 +469,7 @@ if st.session_state.raw_data:
     with col_date1:
         filter_date_min = st.date_input("⏱️ 一番初めの評価日　開始日", value=datetime(2010, 1, 1).date(), max_value=datetime.now().date(), key="date_min", label_visibility="collapsed")
     with col_date_mid:
-        st.markdown("<div style='text-align: center; line-height: 40px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
     with col_date2:
         filter_date_max = st.date_input("⏱️ 一番初めの評価日　終了日", value=datetime.now().date(), max_value=datetime.now().date(), key="date_max", label_visibility="collapsed")
 
@@ -491,8 +523,6 @@ if st.session_state.raw_data:
     )
     
     st.subheader("👀 絞り込み結果のプレビュー")
-    
-    # 🔍 【新機能】データプレビュー自体の文字サイズも少し小さくして見やすく調整
     st.dataframe(
         final_df, 
         use_container_width=True,
