@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
-# 🎨 【CSS再調整】横線（hr）が絶対に消えないようにスタイルを強制適用
+# 🎨 【CSS再調整】横線の上下に心地よいスペース（余白）を確保
 st.markdown("""
     <style>
     /* 画面最上部に自然な余白を確保 */
@@ -77,8 +77,8 @@ st.markdown("""
 # 💎 タイトルを表示
 st.title("💎 Creema市場リサーチツール")
 
-# 📍 確実に表示されるよう、HTMLのインラインスタイルで区切り線を配置（上下に15pxの余白）
-st.markdown('<hr style="border: none; border-top: 1px solid #e6e6e6; margin: 15px 0; padding: 0;">', unsafe_allow_html=True)
+# 📍 【余白調整】marginの数値を変更して、線の下側（結果表示との間）に適切なスペースを空けました
+st.markdown('<hr style="border: none; border-top: 1px solid #e6e6e6; margin-top: 15px; margin-bottom: 25px; padding: 0;">', unsafe_allow_html=True)
 
 # =============================================
 #   サイドバー：設定エリア
@@ -520,7 +520,7 @@ if st.session_state.raw_data:
         final_df["No."] = range(1, len(final_df) + 1)
     
     # =============================================
-    #   結果表示エリア（線のすぐ下に配置）
+    #   結果表示エリア
     # =============================================
     st.success(f"📊 条件に一致した商品: {len(final_df)} 件 / 全件中")
     
