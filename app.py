@@ -14,10 +14,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 st.set_page_config(page_title="Creema市場分析ツール", page_icon="⚡", layout="wide")
 
-# 🔍 【デザイン大幅調整】上の余白を消去 ＆ フィルターの行間・入力欄の縦幅を極細化
+# 🎨 【デザイン微調整】最上部の余白を完全に消しつつ、ブラウザ縮小1回分の極細・コンパクト表示を実現
 st.markdown("""
     <style>
-    /* 1. 画面最上部のスペースを削除 */
+    /* 画面最上部の無駄なスペースを削除 */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
@@ -27,42 +27,52 @@ st.markdown("""
         background: transparent !important;
     }
     
-    /* 2. 画面全体の基本フォントサイズ */
-    html, body, [data-testid="stMarkdownContainer"] p {
-        font-size: 13px !important;
+    /* 全体サイズを「縮小1回分」の13px〜12pxベースに引き下げ */
+    html, body, [data-testid="stMarkdownContainer"] p, .stMarkdown p {
+        font-size: 12.5px !important;
         font-family: "Meiryo", "Helvetica Neue", Arial, sans-serif;
-    }
-    .stHeading h1 {
-        font-size: 22px !important;
-        margin-top: 0px !important;
-        padding-top: 0px !important;
-    }
-    .stHeading h3 {
-        font-size: 16px !important;
+        line-height: 1.4 !important;
     }
     
-    /* 3. サイドバーのフィルター行間をギュッと詰める */
+    /* タイトル文字の復活とサイズ調整 */
+    .stHeading h1 {
+        font-size: 21px !important;
+        font-weight: 700 !important;
+        margin-top: 0px !important;
+        padding-top: 0px !important;
+        margin-bottom: 5px !important;
+        color: #111111 !important;
+    }
+    .stHeading h3 {
+        font-size: 15px !important;
+    }
+    
+    /* サイドバーのフィルター項目・行間をギュッと凝縮 */
     div[data-testid="stSidebarUserContent"] {
         padding-top: 0.5rem !important;
     }
-    div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
-        margin-top: 2px !important;
+    div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h5 {
+        font-size: 12px !important;
+        margin-top: 6px !important;
         margin-bottom: 2px !important;
-        font-weight: bold;
-    }
-    /* 各要素の上下の余白を詰める */
-    div[data-testid="element-container"] {
-        margin-bottom: 0.3rem !important;
+        color: #111111 !important;
+        font-weight: 600 !important;
     }
     
-    /* 4. 入力欄（ボックス）の縦幅を細くスマートにする */
-    div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input, div[data-testid="stSelectbox"] div {
-        padding-top: 4px !important;
-        padding-bottom: 4px !important;
-        min-height: 28px !important;
-        font-size: 13px !important;
+    /* 各要素の上下の隙間を極限までカット */
+    div[data-testid="element-container"] {
+        margin-bottom: 0.2rem !important;
     }
-    /* 入力欄の周りの余白調整 */
+    
+    /* 入力欄（ボックス）の縦幅を極細スマートにするスタイル */
+    .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div {
+        padding: 4px 8px !important;
+        min-height: 26px !important;
+        height: 26px !important;
+        font-size: 12px !important;
+    }
+    
+    /* 入力欄外側の余白の固定化 */
     div[data-testid="stNumberInput"], div[data-testid="stDateInput"] {
         margin-bottom: 0px !important;
     }
@@ -97,25 +107,30 @@ max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # =============================================
-#   📲 LINE通知を送る関数
+#   📲 【確実化】LINE公式アカウントへ通知を送る関数
 # =============================================
 def send_line_notification(keyword_or_url, item_count):
+    # minneのコードで確実に動いている認証情報をこちらに直接組み込みました
+    LINE_ACCESS_TOKEN = "SsJj64qF912H/fusrwNgsiMS6bgJqv5C9i5Rx1HlHAmux8AmFlC7Q9Pnx5pbQD/4LXbi2ftiFf1zalCCDcGQAcXBxfakpnkBPLZkKzn5G2gbuQc2vkcn2GbCJ2Yf1HmfEWQoo8KbqqJn4/tsoPr4TwdB04t89/1O/w1cDnyilFU="
+    LINE_USER_ID = "Ub5228833332f8fd37bbd3d9072853f2c"
+    
+    url = "https://api.line.me/v2/bot/message/push"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {LINE_ACCESS_TOKEN}"
+    }
+    
+    message_text = (
+        f"⚡ 【Creemaツール】利用通知\n\n"
+        f"今、誰かがリサーチを開始したよ！\n"
+        f"---------------------\n"
+        f"▼ 検索内容:\n{keyword_or_url}\n\n"
+        f"▼ 解析上限: {item_count} 件"
+    )
+    
+    payload = {"to": LINE_USER_ID, "messages": [{"type": "text", "text": message_text}]}
     try:
-        if "line" in st.secrets and "notify_token" in st.secrets["line"]:
-            token = st.secrets["line"]["notify_token"]
-            
-            url = "https://notify-api.line.me/api/notify"
-            headers = {"Authorization": f"Bearer {token}"}
-            
-            message = (
-                f"\n📊 Creema市場分析ツールが実行されました！"
-                f"\n【条件】{keyword_or_url}"
-                f"\n【取得件数】{item_count}件"
-                f"\n【実行日時】{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            
-            payload = {"message": message}
-            requests.post(url, headers=headers, data=payload, timeout=5)
+        requests.post(url, headers=headers, json=payload, timeout=5)
     except Exception:
         pass
 
@@ -419,14 +434,14 @@ if st.session_state.raw_data:
     #   サイドバー：データ絞り込みフィルター
     # =============================================
     st.sidebar.markdown("---")
-    st.sidebar.header("🎯 データ絞り込みフィルター")
+    st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
     
     st.sidebar.markdown("##### 🪙 金額(円)")
     col_price1, col_price_mid, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     with col_price1:
         filter_price_min = st.number_input("🪙 金額　最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
     with col_price_mid:
-        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
     with col_price2:
         filter_price_max = st.number_input("🪙 金額　最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
     
@@ -435,7 +450,7 @@ if st.session_state.raw_data:
     with col_fav1:
         filter_fav_min = st.number_input("⭐ お気に入り数　最小", min_value=0, max_value=max_fav_val, value=0, key="fav_min", label_visibility="collapsed")
     with col_fav_mid:
-        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
     with col_fav2:
         filter_fav_max = st.number_input("⭐ お気に入り数　最大", min_value=0, max_value=max_fav_val, value=max_fav_val, key="fav_max", label_visibility="collapsed")
         
@@ -444,7 +459,7 @@ if st.session_state.raw_data:
     with col_buy1:
         filter_buy_min = st.number_input("🛒 購入者数　最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
     with col_buy_mid:
-        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
     with col_buy2:
         filter_buy_max = st.number_input("🛒 購入者数　最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
         
@@ -453,7 +468,7 @@ if st.session_state.raw_data:
     with col_rev1:
         filter_rev_min = st.number_input("💬 総評価数　最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
     with col_rev_mid:
-        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
     with col_rev2:
         filter_rev_max = st.number_input("💬 総評価数　最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
     
@@ -469,7 +484,7 @@ if st.session_state.raw_data:
     with col_date1:
         filter_date_min = st.date_input("⏱️ 一番初めの評価日　開始日", value=datetime(2010, 1, 1).date(), max_value=datetime.now().date(), key="date_min", label_visibility="collapsed")
     with col_date_mid:
-        st.markdown("<div style='text-align: center; line-height: 28px; font-size: 12px;'>〜</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; line-height: 26px; font-size: 11px;'>〜</div>", unsafe_allow_html=True)
     with col_date2:
         filter_date_max = st.date_input("⏱️ 一番初めの評価日　終了日", value=datetime.now().date(), max_value=datetime.now().date(), key="date_max", label_visibility="collapsed")
 
