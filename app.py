@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 #   デザインとヘッダー設定
 # =============================================
-st.set_page_config(page_title="Creema市場分析ツール", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
 # 🎨 【デザイン微調整】最上部の余白を完全に消しつつ、ブラウザ縮小1回分の極細・コンパクト表示を実現
 st.markdown("""
@@ -79,7 +79,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("⚡ Creema市場分析ツール")
+st.title("💎 Creema市場リサーチツール")
 st.markdown("---")
 
 # =============================================
@@ -107,10 +107,9 @@ max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # =============================================
-#   📲 【確実化】LINE公式アカウントへ通知を送る関数
+#   📲 LINE公式アカウントへ通知を送る関数
 # =============================================
 def send_line_notification(keyword_or_url, item_count):
-    # minneのコードで確実に動いている認証情報をこちらに直接組み込みました
     LINE_ACCESS_TOKEN = "SsJj64qF912H/fusrwNgsiMS6bgJqv5C9i5Rx1HlHAmux8AmFlC7Q9Pnx5pbQD/4LXbi2ftiFf1zalCCDcGQAcXBxfakpnkBPLZkKzn5G2gbuQc2vkcn2GbCJ2Yf1HmfEWQoo8KbqqJn4/tsoPr4TwdB04t89/1O/w1cDnyilFU="
     LINE_USER_ID = "Ub5228833332f8fd37bbd3d9072853f2c"
     
@@ -121,7 +120,7 @@ def send_line_notification(keyword_or_url, item_count):
     }
     
     message_text = (
-        f"⚡ 【Creemaツール】利用通知\n\n"
+        f"💎 【Creemaツール】利用通知\n\n"
         f"今、誰かがリサーチを開始したよ！\n"
         f"---------------------\n"
         f"▼ 検索内容:\n{keyword_or_url}\n\n"
@@ -538,9 +537,11 @@ if st.session_state.raw_data:
     )
     
     st.subheader("👀 絞り込み結果のプレビュー")
+    # ↕️ 【縦幅の拡張】height=800を指定し、1画面に約35件ほどを一気に表示できるようにしました
     st.dataframe(
         final_df, 
         use_container_width=True,
+        height=800,
         column_config={
             "商品名": st.column_config.TextColumn("商品名", width=250),
             "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")
