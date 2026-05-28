@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
-# 🎨 【CSS大幅見直し】文字の潰れを解消し、見やすく上品な余白感に調整
+# 🎨 【CSS修正】タイトルの下のスペースを完全にゼロ化
 st.markdown("""
     <style>
     /* 画面最上部に自然な余白を確保 */
@@ -23,22 +23,29 @@ st.markdown("""
         padding-bottom: 2rem !important;
     }
     
-    /* 潰れていた文字サイズを標準的な「14px」に引き上げ、行間もゆったりに */
+    /* 文字サイズを標準的な「14px」に設定 */
     html, body, [data-testid="stMarkdownContainer"] p, .stMarkdown p {
         font-size: 14px !important;
         font-family: "Meiryo", "Helvetica Neue", Arial, sans-serif;
         line-height: 1.5 !important;
     }
     
-    /* 💎 タイトルをハッキリ、大きく表示 */
+    /* 💎 タイトルの表示と、真下の余白（margin-bottom）を完全に0にする設定 */
     h1 {
         font-size: 28px !important;
         font-weight: 700 !important;
         color: #111111 !important;
         margin-top: 0px !important;
-        margin-bottom: 15px !important;
+        margin-bottom: 0px !important;  /* 下のスペースを完全に排除 */
         padding-top: 0px !important;
+        padding-bottom: 0px !important;
         display: block !important;
+    }
+    
+    /* タイトルのすぐ後に来る要素の上の隙間もカット */
+    h1 + div {
+        margin-top: 0px !important;
+        padding-top: 0px !important;
     }
     
     /* サイドバーのフィルター項目も見やすい大きさに調整 */
@@ -53,12 +60,12 @@ st.markdown("""
         font-weight: 600 !important;
     }
     
-    /* 各要素の間の極端な隙間カットを解除し、自然な間隔（0.5rem）へ */
+    /* 各要素の間の自然な間隔 */
     div[data-testid="element-container"] {
         margin-bottom: 0.5rem !important;
     }
     
-    /* 入力欄（ボックス）が潰れないよう高さをしっかり確保 */
+    /* 入力欄（ボックス）の高さをしっかり確保 */
     .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div {
         padding: 6px 10px !important;
         min-height: 36px !important;
@@ -73,8 +80,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ✂️ タイトル直下の不要な区切り線（---）を削除し、直結させました
 st.title("💎 Creema市場リサーチツール")
-st.markdown("---")
 
 # =============================================
 #   サイドバー：設定エリア
