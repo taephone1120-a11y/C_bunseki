@@ -94,7 +94,7 @@ search_keyword = ""
 target_url = ""
 
 if mode == "キーワード検索":
-    search_keyword = st.sidebar.text_input("🔍 検索キーワードを入力", value="天然石　リング")
+    search_keyword = st.sidebar.text_input("🔍 検索キーワードを入力", value="")
     encoded_keyword = quote(search_keyword)
     target_url = f"https://www.creema.jp/listing?q={encoded_keyword}&active=pc_listing-form"
 else:
