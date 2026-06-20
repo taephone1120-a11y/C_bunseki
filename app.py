@@ -52,6 +52,13 @@ st.markdown("""
         border-radius: 4px;
         margin-bottom: 15px;
     }
+    .ai-box {
+        background-color: #f0f4f8;
+        border: 1px solid #d0e2ff;
+        padding: 20px;
+        border-radius: 6px;
+        margin-top: 20px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -142,7 +149,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
     return [d.strftime("%Y.%m.%d") for d in all_matched_dates]
 
 # =============================================
-#   単一商品を解析するコアロジック
+#   単一商品を詳細解析（紹介文のスクレイピングを追加）
 # =============================================
 def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
     try:
@@ -159,11 +166,17 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
         last_page_url = None
         last_voices = []
         recent_sales = ["-", "-", "-"]
+        description_text = "取得失敗" # AI分析用に作品紹介文を保存する変数
         
         detail_res = requests.get(link, headers=headers, timeout=8)
         if detail_res.status_code == 200:
             detail_soup = BeautifulSoup(detail_res.content, "html.parser")
             
+            # 作品紹介文の取得を追加
+            desc_element = detail_soup.select_one(".js-item-description, .p-item-detail__description")
+            if desc_element:
+                description_text = desc_element.text.strip()
+
             purchase_element = detail_soup.find(string=re.compile(r"(\d+人購入|\d+人以上購入)"))
             if purchase_element:
                 purchase_count = purchase_element.strip()
@@ -253,6 +266,7 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
             "総評価数": review,
             "直近1ヶ月の評価数": recent_review_display,
             "一番初めの評価日": first_review_date,
+            "作品紹介文": description_text # 画面非表示用の隠しデータ
         }
         return result_data
     except:
@@ -273,9 +287,7 @@ def scrape_creema_fast(start_url, max_num):
     all_item_elements_data = []
     current_url = start_url
     page_count = 1
-    
     detected_market_total = 170000 
-    
     page_status = st.empty()
     
     while current_url and len(all_item_elements_data) < max_num:
@@ -289,11 +301,6 @@ def scrape_creema_fast(start_url, max_num):
                 search_count_element = soup.find(string=re.compile(r"検索結果\s*[\d,]+件"))
                 if search_count_element:
                     match_count = re.search(r"検索結果\s*([\d,]+)件", search_count_element)
-                    if match_count:
-                        detected_market_total = int(match_count.group(1).replace(",", ""))
-                else:
-                    page_text = soup.get_text()
-                    match_count = re.search(r"検索結果\s*([\d,]+)件", page_text)
                     if match_count:
                         detected_market_total = int(match_count.group(1).replace(",", ""))
             
@@ -329,23 +336,17 @@ def scrape_creema_fast(start_url, max_num):
             
     page_status.empty()
     total_found = len(all_item_elements_data)
-    
-    if total_found == 0:
-        return None
+    if total_found == 0: return None
         
     status_text = st.empty()
     progress_bar = st.progress(0)
-    
     scraped_data = []
     
     with ThreadPoolExecutor(max_workers=15) as executor:
         future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): i for i, item_data in enumerate(all_item_elements_data)}
-        
         for current_idx, future in enumerate(as_completed(future_to_item), 1):
             result = future.result()
-            if result: 
-                scraped_data.append(result)
-                
+            if result: scraped_data.append(result)
             progress_bar.progress(current_idx / total_found)
             status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
             
@@ -363,7 +364,9 @@ def scrape_creema_fast(start_url, max_num):
 def convert_df_to_excel(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name="リサーチ結果", index=False)
+        # Excel出力用に不要な隠しカラムを除去してエクスポート
+        export_df = df.drop(columns=["作品紹介文"]) if "作品紹介文" in df.columns else df
+        export_df.to_excel(writer, sheet_name="リサーチ結果", index=False)
         worksheet = writer.sheets["リサーチ結果"]
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         header_font = Font(name="Meiryo", size=11, bold=True, color="FFFFFF")
@@ -371,7 +374,7 @@ def convert_df_to_excel(df):
         data_font = Font(name="Meiryo", size=10)
         thin_border = Border(left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'), top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9'))
         
-        for row in worksheet.iter_rows(min_row=1, max_row=len(df)+1):
+        for row in worksheet.iter_rows(min_row=1, max_row=len(export_df)+1):
             for cell in row:
                 cell.border = thin_border
                 if cell.row == 1:
@@ -389,14 +392,59 @@ def convert_df_to_excel(df):
     return output.getvalue()
 
 # =============================================
+#   📞 Gemini API 呼び出し関数
+# =============================================
+def generate_text_with_gemini(api_key, target_title, target_desc, my_stone, my_features):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    
+    prompt = f"""
+あなたはハンドメイドマーケット（Creema / minne）での作品プロモーション、およびコピーライティングの専門家です。
+現在市場で実際に売れている「参考作品」のデータ（タイトル・紹介文）を分析し、その強みや売れる要素を抽出した上で、ユーザーの新作のための「作品タイトル」および「作品紹介文」を魅力的に提案してください。
+
+---
+【分析対象の参考作品（売れ筋）】
+■作品タイトル: {target_title}
+■作品紹介文:
+{target_desc}
+
+---
+【ユーザーがこれから出品したい作品の情報】
+■使用している天然石: {my_stone}
+■作品の特徴・こだわり・仕様:
+{my_features}
+---
+
+以下の構成で、丁寧に出力してください。
+
+### 1. 参考作品の徹底分析結果
+* **タイトルの傾向**: 参考作品がどのようなキーワードの並び順、フック（【】や記号の使い方）を用いてクリック率を上げているか分析してください。
+* **紹介文の構成・アピール手法**: 読者の心をつかむストーリー構成、スペック表記、購入特典の魅せ方などを分析してください。
+* **多用されているヒットキーワード**: このジャンルで刺さりやすい、参考作品内で効果的に使われているキーワードを箇条書きで5〜7個抽出してください。
+
+### 2. あなたの作品用：作品タイトル提案（5選）
+参考作品のタイトル文字数やキーワードの並べ方の法則を引き継ぎつつ、ユーザーの作品用にアレンジしたタイトルを、それぞれ異なる切り口で5パターン作成してください。（文字数はCreema/minneに適した範囲内）。
+
+### 3. あなたの作品用：作品紹介文の提案
+参考作品の「売れる構成（導入文の引き込み、作品の背景、スペック、お手入れ方法、ラッピング案内など）」の黄金比を真似しつつ、ユーザーの作品特徴を最大限に魅力化させた、そのままコピー＆ペーストで使える紹介文を作成してください。ハッシュタグ（#）の提案も含めてください。
+"""
+    
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=30)
+        if res.status_code == 200:
+            return res.json()["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            return f"❌ Gemini APIエラー (Status Code: {res.status_code})\n{res.text}"
+    except Exception as e:
+        return f"❌ 通信エラーが発生しました: {str(e)}"
+
+# =============================================
 #   メイン制御とセッション管理
 # =============================================
-if "raw_data" not in st.session_state:
-    st.session_state.raw_data = None
-if "market_total" not in st.session_state:
-    st.session_state.market_total = 170000
-if "target_max_items" not in st.session_state:
-    st.session_state.target_max_items = 100
+if "raw_data" not in st.session_state: st.session_state.raw_data = None
+if "market_total" not in st.session_state: st.session_state.market_total = 170000
+if "target_max_items" not in st.session_state: st.session_state.target_max_items = 100
 
 if start_button:
     if mode == "一覧URL直貼り" and not target_url:
@@ -404,7 +452,6 @@ if start_button:
     else:
         cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
         send_line_notification(cond_text, max_items)
-        
         st.session_state.target_max_items = max_items
         
         res_dict = scrape_creema_fast(target_url, max_items)
@@ -418,13 +465,10 @@ if st.session_state.raw_data:
     df_filter = df_orig.copy()
     
     def clean_purchase_count(val):
-        if pd.isna(val) or val == 0:
-            return 0
+        if pd.isna(val) or val == 0: return 0
         val_str = str(val).strip()
         num_match = re.search(r"(\d+)", val_str)
-        if num_match:
-            return int(num_match.group(1))
-        return 0
+        return int(num_match.group(1)) if num_match else 0
 
     df_filter["_price_num"] = pd.to_numeric(df_filter["価格(円)"], errors='coerce').fillna(0).astype(int)
     df_filter["_buy_num"] = df_filter["購入者数"].apply(clean_purchase_count)
@@ -434,84 +478,60 @@ if st.session_state.raw_data:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
     
-    # 🪙 金額(円)
+    # 各種フィルター設定
     st.sidebar.markdown("##### 🪙 金額(円)")
     col_price1, _, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_price_min = col_price1.number_input("🪙 最小", min_value=0, value=0, key="price_min", label_visibility="collapsed")
     filter_price_max = col_price2.number_input("🪙 最大", min_value=0, value=None, key="price_max", label_visibility="collapsed")
         
-    # 🛒 購入者数
     st.sidebar.markdown("##### 🛒 購入者数")
     col_buy1, _, col_buy2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_buy_min = col_buy1.number_input("🛒 最小", min_value=0, value=0, key="buy_min", label_visibility="collapsed")
     filter_buy_max = col_buy2.number_input("🛒 最大", min_value=0, value=None, key="buy_max", label_visibility="collapsed")
     
-    # 📅 直近販売日３
     st.sidebar.markdown("##### 📅 直近販売日３")
     col_sales3_1, _, col_sales3_2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_sales3_min = col_sales3_1.date_input("📅 開始", value=datetime(2020, 1, 1).date(), max_value=datetime.now().date(), key="sales3_min", label_visibility="collapsed")
     filter_sales3_max = col_sales3_2.date_input("📅 終了", value=None, max_value=datetime.now().date(), key="sales3_max", label_visibility="collapsed")
         
-    # 💬 ユーザーの総評価数
     st.sidebar.markdown("##### 💬 ユーザーの総評価数")
     col_rev1, _, col_rev2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_rev_min = col_rev1.number_input("💬 最小", min_value=0, value=0, key="rev_min", label_visibility="collapsed")
     filter_rev_max = col_rev2.number_input("💬 最大", min_value=0, value=None, key="rev_max", label_visibility="collapsed")
     
-    # 📅 直近1ヶ月の総評価数
     st.sidebar.markdown("##### 📅 直近1ヶ月の総評価数")
     filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の総評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
 
     query_df = df_filter.copy()
     if filter_price_min is not None: query_df = query_df[query_df["_price_num"] >= filter_price_min]
     if filter_price_max is not None: query_df = query_df[query_df["_price_num"] <= filter_price_max]
-    
     if filter_buy_min is not None: query_df = query_df[query_df["_buy_num"] >= filter_buy_min]
     if filter_buy_max is not None: query_df = query_df[query_df["_buy_num"] <= filter_buy_max]
-    
     if filter_rev_min is not None: query_df = query_df[query_df["_rev_num"] >= filter_rev_min]
     if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
     
     def check_sales3_date_range(date_str):
-        if filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None:
-            return True
-            
-        if date_str in ["-", "3ヶ月以上前", "取得失敗"]:
-            return False
-            
+        if filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None: return True
+        if date_str in ["-", "3ヶ月以上前", "取得失敗"]: return False
         try:
             target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
-            lower_ok = (filter_sales3_min is None or target_dt >= filter_sales3_min)
-            upper_ok = (filter_sales3_max is None or target_dt <= filter_sales3_max)
-            return lower_ok and upper_ok
-        except:
-            return False
+            return (filter_sales3_min is None or target_dt >= filter_sales3_min) and (filter_sales3_max is None or target_dt <= filter_sales3_max)
+        except: return False
             
     query_df = query_df[query_df["直近販売日3"].apply(check_sales3_date_range)]
-    
     if filter_recent == "1件以上": query_df = query_df[query_df["_recent_num"] >= 1]
     elif filter_recent == "5件以上": query_df = query_df[query_df["_recent_num"] >= 5]
     elif filter_recent == "10件以上": query_df = query_df[query_df["_recent_num"] >= 10]
     elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df["直近1ヶ月の評価数"] == "20件以上")]
 
     query_df["購入者数"] = query_df["_buy_num"]
-
     final_df = query_df.drop(columns=["_price_num", "_buy_num", "_rev_num", "_recent_num"])
     
-    target_columns = [
-        "No.", "作家名", "商品名", "価格(円)", "商品URL", 
-        "お気に入り数", "購入者数", "直近販売日1", "直近販売日2", "直近販売日3", 
-        "総評価数", "直近1ヶ月の評価数", "一番初めの評価日"
-    ]
+    target_columns = ["No.", "作家名", "商品名", "価格(円)", "商品URL", "お気に入り数", "購入者数", "直近販売日1", "直近販売日2", "直近販売日3", "総評価数", "直近1ヶ月の評価数", "一番初めの評価日", "作品紹介文"]
     final_df = final_df.reindex(columns=target_columns)
-    
-    if not final_df.empty: 
-        final_df["No."] = range(1, len(final_df) + 1)
+    if not final_df.empty: final_df["No."] = range(1, len(final_df) + 1)
         
-    final_df = final_df.rename(columns={
-        "総評価数": "ユーザーの総評価数",
-        "直近1ヶ月の評価数": "直近1ヶ月の総評価数"
-    })
+    final_df = final_df.rename(columns={"総評価数": "ユーザーの総評価数", "直近1ヶ月の評価数": "直近1ヶ月の総評価数"})
     
     st.success(f"📊 条件に一致した商品: {len(final_df)} 件 / 全件中")
     excel_data = convert_df_to_excel(final_df)
@@ -524,10 +544,11 @@ if st.session_state.raw_data:
     )
     
     st.subheader("👀 絞り込み結果のプレビュー")
+    display_df = final_df.drop(columns=["作品紹介文"]) if "作品紹介文" in final_df.columns else final_df
     st.dataframe(
-        final_df, 
+        display_df, 
         use_container_width=True, 
-        height=400, 
+        height=350, 
         hide_index=True,
         column_config={
             "商品名": st.column_config.TextColumn("商品名", width=250), 
@@ -536,11 +557,9 @@ if st.session_state.raw_data:
     )
 
     # =============================================
-    #   📊 売れやすさ計算 (修正版判定ロジック)
+    #   📊 売れやすさ計算 (既存ロジック)
     # =============================================
     total_raw_count = len(st.session_state.raw_data)
-    target_setting = st.session_state.target_max_items
-    
     st.markdown("---")
     st.subheader("📊 独立マーケット分析（売れやすさ計算）")
     
@@ -551,109 +570,156 @@ if st.session_state.raw_data:
             st.session_state.show_calculator = True
             
         if st.session_state.get("show_calculator", False):
-            # 自動取得された市場全体の総検索結果件数をそのまま利用
             total_market_items = max(1, int(st.session_state.market_total))
-            
             calc_one_month_ago = datetime.now() - timedelta(days=30)
             calc_three_months_ago = datetime.now() - timedelta(days=90)
             
-            # --- 【判定用データ集計】 ---
             total_artists_count = len(st.session_state.raw_data)
-            under_1000_count = 0        
-            active_under_1000_count = 0 
-            total_recent_sales_3months = 0
+            under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0, 0
             
             for item in st.session_state.raw_data:
                 try: r_num = int(re.sub(r"\D", "", str(item["ユーザーの総評価数" if "ユーザーの総評価数" in item else "総評価数"])))
                 except: r_num = 0
                 
                 s1_str = item["直近販売日1"]
-                is_s1_active_1month = False
-                is_s1_active_3months = False
-                
+                is_s1_active_1month, is_s1_active_3months = False, False
                 if s1_str not in ["-", "3ヶ月以上前", "取得失敗"]:
                     try:
                         s1_dt = datetime.strptime(s1_str, "%Y.%m.%d")
-                        if s1_dt >= calc_one_month_ago:
-                            is_s1_active_1month = True
-                        if s1_dt >= calc_three_months_ago:
-                            is_s1_active_3months = True
+                        if s1_dt >= calc_one_month_ago: is_s1_active_1month = True
+                        if s1_dt >= calc_three_months_ago: is_s1_active_3months = True
                     except: pass
                 
-                if is_s1_active_3months:
-                    total_recent_sales_3months += 1
-                
+                if is_s1_active_3months: total_recent_sales_3months += 1
                 if r_num <= 1000:
                     under_1000_count += 1
-                    if is_s1_active_1month:
-                        active_under_1000_count += 1
+                    if is_s1_active_1month: active_under_1000_count += 1
 
             ratio_3months_sales = (total_recent_sales_3months / total_artists_count) if total_artists_count > 0 else 0.0
             ratio_active_vs_total = (active_under_1000_count / total_artists_count) if total_artists_count > 0 else 0.0
             ratio_active_vs_general = (active_under_1000_count / under_1000_count) if under_1000_count > 0 else 0.0
 
-            # --- 【ロジック1】お休み市場の判定 ---
             if ratio_3months_sales <= 0.50:
-                judge_title = "❄️ お休み市場（需要低迷、または停滞）"
-                judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}%（基準50%以下）しかありません。市場全体の動きが非常に鈍く、需要が一時的に冷え込んでいるか、季節外れの可能性があります。別のキーワードでのリサーチをお勧めします。"
-                color = "#F8D7DA"
-                
-                final_score = int((ratio_3months_sales / 0.50) * 30)
-                final_score = min(max(final_score, 0), 30)
-
-            # --- 【ロジック2】大手が強すぎる市場（レッドオーシャン）の判定 ---
+                judge_title, color = "❄️ お休み市場（需要低迷、または停滞）", "#F8D7DA"
+                judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}% しかありません。動きが非常に鈍い市場です。"
+                final_score = min(max(int((ratio_3months_sales / 0.50) * 30), 0), 30)
             elif (ratio_active_vs_total <= 0.15) or (ratio_active_vs_general <= 0.30):
-                judge_title = "⚖️ レッドオーシャン（大手が強すぎる市場）"
-                judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを大手が独占しており、一般作家が普通に参入しても埋もれやすい過密市場です。差別化戦略が必須となります。"
-                color = "#FFF3CD"
-                
-                achievement_vs_total = ratio_active_vs_total / 0.15
-                achievement_vs_general = ratio_active_vs_general / 0.30
-                worst_achievement = min(achievement_vs_total, achievement_vs_general)
-                
-                final_score = 30 + int(worst_achievement * 20)
-                final_score = min(max(final_score, 30), 50)
-
-            # --- 【ロジック3】狙い目・激アツの計算 ---
+                judge_title, color = "⚖️ レッドオーシャン（大手が強すぎる市場）", "#FFF3CD"
+                judge_desc = f"直近1ヶ月に動いた一般作家が全体に対し {ratio_active_vs_total*100:.1f}%。上位を大手が独占しています。"
+                final_score = min(max(30 + int(min(ratio_active_vs_total/0.15, ratio_active_vs_general/0.30) * 20), 30), 50)
             else:
-                survival_rate = ratio_active_vs_general
-                
-                if total_market_items <= 500:
-                    market_bonus = 35  
-                elif total_market_items <= 3000:
-                    market_bonus = 20  
-                elif total_market_items <= 20000:
-                    market_bonus = 5   
-                else:
-                    market_bonus = -int(np.log10(total_market_items / 20000) * 12)
-                    market_bonus = max(market_bonus, -25)
-
-                raw_score = (survival_rate * 60) + 30 + market_bonus
-                final_score = min(max(int(raw_score), 51), 100) 
-                
+                market_bonus = 35 if total_market_items <= 500 else (20 if total_market_items <= 3000 else (5 if total_market_items <= 20000 else max(-int(np.log10(total_market_items / 20000) * 12), -25)))
+                final_score = min(max(int((ratio_active_vs_general * 60) + 30 + market_bonus), 51), 100) 
                 if final_score >= 75:
-                    judge_title = "🔥 激アツ（超おすすめ市場）"
-                    judge_desc = f"全体の競合件数（{total_market_items:,}件）が適正、かつ一般作家の生存率が非常に高い『理想的なお宝市場』です。大手に需要を吸い尽くされておらず、新しく商品を出しても上位表示や即売れを狙えるチャンスが極めて高い状態です。"
-                    color = "#D4EDDA"
+                    judge_title, color = "🔥 激アツ（超おすすめ市場）", "#D4EDDA"
+                    judge_desc = "競合件数が適正で、一般作家の生存率が非常に高いお宝市場です。"
                 else:
-                    judge_title = "✨ 狙い目（十分にチャンスあり）"
-                    judge_desc = f"適度に市場が回転しており、一般作家でも十分に売上を立てられる健全な市場です。独自のタイトルワークや見せ方で攻めることで、さらに高い確率でファンを掴めます。"
-                    color = "#CCE5FF"
+                    judge_title, color = "✨ 狙い目（十分にチャンスあり）", "#CCE5FF"
+                    judge_desc = "健全に回転しており、一般作家でも十分に売上を立てられる市場です。"
 
-            # --- 画面へ表示 ---
             st.markdown(f"""
                 <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
                     <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
                     <h4>判定：{judge_title}</h4>
-                    <p style="font-size:14px; margin-bottom:5px;"><b>🔍 新・判定ロジック算出内訳:</b></p>
-                    <ul>
-                        <li>自動検出された市場総件数: <b>{total_market_items:,} 件</b></li>
-                        <li>📅 <b>直近3ヶ月以内の販売商品割合（基準>50%）: <span style="font-size:15px; font-weight:bold;">{ratio_3months_sales*100:.1f}%</span></b> （{total_recent_sales_3months}件 / {total_artists_count}件中）</li>
-                        <li>解析対象内の一般作家（評価1000以下）: <b>{under_1000_count} 件 / {total_artists_count}件中</b></li>
-                        <li>直近1ヶ月以内に動いている一般作家: <b>{active_under_1000_count} 件</b></li>
-                        <li>📈 <b>対全体比率（基準>15%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_total*100:.1f}%</span></b></li>
-                        <li>🎯 <b>対一般作家比率（基準>30%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_general*100:.1f}%</span></b></li>
-                    </ul>
-                    <p style="font-size:14.5px; line-height:1.6; background:rgba(255,255,255,0.5); padding:10px; border-radius:4px; margin-top:10px;"><b>💡 総評:</b><br>{judge_desc}</p>
+                    <p style="font-size:14.5px;"><b>💡 総評:</b> {judge_desc}</p>
                 </div>
             """, unsafe_allow_html=True)
+
+    # =============================================
+    #   🤖 👑 Gemini作品タイトル・紹介文提案生成エリア
+    # =============================================
+    st.markdown("---")
+    st.subheader("🤖 Gemini売れ筋アライアンス生成アシスタント")
+    
+    # 5つの条件優先度に従って「オススメの10品」を自動でバックグラウンド抽出するロジック
+    df_recommend = df_filter.copy()
+    today_dt = datetime.now()
+    one_month_ago_date = (today_dt - timedelta(days=30)).date()
+    three_months_ago_date = (today_dt - timedelta(days=90)).date()
+    
+    def get_date_obj(d_str):
+        if d_str in ["-", "3ヶ月以上前", "取得失敗"]: return None
+        try: return datetime.strptime(d_str, "%Y.%m.%d").date()
+        except: return None
+
+    df_recommend["_date1_obj"] = df_recommend["直近販売日1"].apply(get_date_obj)
+    df_recommend["_date3_obj"] = df_recommend["直近販売日3"].apply(get_date_obj)
+    
+    # 優先条件に沿ってランク（スコア）を付与
+    def calc_priority_rank(row):
+        # ① 直近販売日３が1ヶ月以内 ＆ 購入者数100人以内
+        if row["_date3_obj"] and row["_date3_obj"] >= one_month_ago_date and row["_buy_num"] <= 100: return 1
+        # ② 直近販売日３が1ヶ月以内 ＆ 購入者数500人以内
+        if row["_date3_obj"] and row["_date3_obj"] >= one_month_ago_date and row["_buy_num"] <= 500: return 2
+        # ③ 直近販売日３が1ヶ月以内 ＆ 購入者数1000人以内
+        if row["_date3_obj"] and row["_date3_obj"] >= one_month_ago_date and row["_buy_num"] <= 1000: return 3
+        # ④ 直近販売日１が1ヶ月以内 ＆ 購入者数1000人以内
+        if row["_date1_obj"] and row["_date1_obj"] >= one_month_ago_date and row["_buy_num"] <= 1000: return 4
+        # ⑤ 直近販売日１が3ヶ月以内 ＆ 購入者数1000人以内
+        if row["_date1_obj"] and row["_date1_obj"] >= three_months_ago_date and row["_buy_num"] <= 1000: return 5
+        return 99 # 条件外
+
+    df_recommend["優先順位"] = df_recommend.apply(calc_priority_rank, axis=1)
+    df_recommend = df_recommend.sort_values(by=["優先順位", "_buy_num"], ascending=[True, False])
+    
+    # 有効な参考候補のみ（上位10件）を抽出
+    candidate_items = df_recommend[df_recommend["優先順位"] != 99].head(10)
+    
+    # もし条件に合うものが上限に達しない場合は、条件外の売れている順で10件まで補填
+    if len(candidate_items) < 10:
+        fill_count = 10 - len(candidate_items)
+        backup_items = df_recommend[df_recommend["優先順位"] == 99].head(fill_count)
+        candidate_items = pd.concat([candidate_items, backup_items])
+
+    if candidate_items.empty:
+        st.warning("⚠️ 現在のデータの中に、AI分析の参考としておすすめできる有効な商品が見つかりませんでした。再取得してください。")
+    else:
+        st.markdown("""
+        取得した全競合商品の中から、ご指定の優先ロジックに従い、**「大手すぎず直近で高確率でリアルに売れているお手本ライバル作品」**を10品ピックアップしました。
+        お好きな1品を選んで、あなたの作品情報を入力するだけで、Geminiが瞬時に分析と文章作成を行います。
+        """)
+        
+        # セレクトボックス用に表示名を作成
+        select_options = []
+        option_to_data = {}
+        
+        for idx, row in candidate_items.iterrows():
+            cond_label = f"【優先条件{row['優先順位']}】" if row['優先順位'] != 99 else "【通常品】"
+            display_name = f"{cond_label} (購入:{row['_buy_num']}人 / 直近3:{row['直近販売日3']}) {row['商品名'][:30]}..."
+            select_options.append(display_name)
+            option_to_data[display_name] = row
+
+        # UIコンポーネントの配置
+        gemini_key = st.text_input("🔑 Gemini APIキーを入力してください", value="ここに取得したAIzaSyから始まるキーを貼り付ける", type="password", help="Google AI Studioで取得したAPIキーを入力します。")
+        chosen_option = st.selectbox("🎯 お手本（参考にする売れ筋商品）を選択してください", select_options)
+        
+        col_input1, col_input2 = st.columns(2)
+        my_stone_input = col_input1.text_input("🔮 あなたの作品に使う天然石（例: ラピスラズリ, アメジスト）", value="ラピスラズリ")
+        my_features_input = col_input2.text_area(
+            "🛠️ あなたの作品の特徴・こだわり（例: ワイヤーでシンプルに固定、360度どの角度からも石が見える、つけっぱなし対応、など）",
+            value="「はだかのお守り」シリーズ。\n天然石をシンプルにワイヤーで留めており、360度どの角度からも天然石の美しさを見ることができます。\nその日の気分に合わせて好きな面を指輪の正面にセットして楽しめる、お守りのようなリングです。"
+        )
+        
+        generate_btn = st.button("🚀 売れ筋を分析してタイトル・紹介文を提案してもらう", type="primary")
+        
+        if generate_btn:
+            if not gemini_key:
+                st.error("⚠️ Gemini APIキーを入力してください。")
+            elif option_to_data[chosen_option]["作品紹介文"] == "取得失敗":
+                st.error("⚠️ 選択された商品の紹介文データが正しくスクレイピングできていません。別の商品を選択し直してください。")
+            else:
+                selected_row = option_to_data[chosen_option]
+                
+                with st.spinner("🧙‍♂️ Geminiが売れ筋ライバル商品を分析し、新しい文章を考えています..."):
+                    ai_result = generate_text_with_gemini(
+                        api_key=gemini_key,
+                        target_title=selected_row["商品名"],
+                        target_desc=selected_row["作品紹介文"],
+                        my_stone=my_stone_input,
+                        my_features=my_features_input
+                    )
+                
+                st.markdown('<div class="ai-box">', unsafe_allow_html=True)
+                st.subheader("✨ Geminiからの提案・分析結果レポート")
+                st.markdown(ai_result)
+                st.markdown('</div>', unsafe_allow_html=True)
