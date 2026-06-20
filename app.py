@@ -213,9 +213,8 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
                                 if oldest_date is None or current_date < oldest_date: oldest_date = current_date
                     if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
 
-        # 🎯 指定された並び順に辞書を定義
         result_data = {
-            "No.": 0,  # 後ほど一括で連番を割り振ります
+            "No.": 0,
             "作家名": creator,
             "商品名": title,
             "価格(円)": price,
@@ -314,7 +313,6 @@ def scrape_creema_fast(start_url, max_num):
     status_text.empty()
     
     if scraped_data:
-        # 割り振られた全データに対し、指定順のNo.を1から採番
         for i, item in enumerate(scraped_data, 1): item["No."] = i
         return scraped_data
     return None
@@ -342,7 +340,6 @@ def convert_df_to_excel(df):
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 else:
                     cell.font = data_font
-                    # 列の位置に合わせた揃え位置調整
                     if cell.column in [1, 4]: cell.alignment = Alignment(horizontal="right", vertical="center")
                     elif cell.column in [6, 7, 8, 9, 10, 11, 12, 13]: cell.alignment = Alignment(horizontal="center", vertical="center")
                     else: cell.alignment = Alignment(horizontal="left", vertical="center")
@@ -409,11 +406,6 @@ if st.session_state.raw_data:
     
     st.sidebar.markdown("##### 📅 直近1ヶ月の評価数")
     filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
-    
-    st.sidebar.markdown("##### ⏱️ 一番初めの評価日")
-    col_date1, _, col_date2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    filter_date_min = col_date1.date_input("⏱️ 開始", value=datetime(2010, 1, 1).date(), max_value=datetime.now().date(), key="date_min", label_visibility="collapsed")
-    filter_date_max = col_date2.date_input("⏱️ 終了", value=datetime.now().date(), max_value=datetime.now().date(), key="date_max", label_visibility="collapsed")
 
     query_df = df_filter[
         (df_filter["_price_num"] >= filter_price_min) & (df_filter["_price_num"] <= filter_price_max) &
@@ -427,16 +419,8 @@ if st.session_state.raw_data:
     elif filter_recent == "10件以上": query_df = query_df[query_df["_recent_num"] >= 10]
     elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df["直近1ヶ月の評価数"] == "20件以上")]
 
-    def check_date_range(date_str):
-        try:
-            if date_str == "取得失敗": return False
-            return filter_date_min <= datetime.strptime(date_str, "%Y.%m.%d").date() <= filter_date_max
-        except: return False
-            
-    query_df = query_df[query_df["一番初めの評価日"].apply(check_date_range)]
     final_df = query_df.drop(columns=["_price_num", "_fav_num", "_buy_num", "_rev_num", "_recent_num"])
     
-    # 🎯 最終出力時にご希望の並び順へ完全に固定
     target_columns = [
         "No.", "作家名", "商品名", "価格(円)", "商品URL", 
         "お気に入り数", "購入者数", "直近販売日1", "直近販売日2", "直近販売日3", 
@@ -458,7 +442,6 @@ if st.session_state.raw_data:
     )
     
     st.subheader("👀 絞り込み結果のプレビュー")
-    # 🎯 hide_index=True を指定して一番左の「0から始まるインデックス列」を完全削除
     st.dataframe(
         final_df, 
         use_container_width=True, 
