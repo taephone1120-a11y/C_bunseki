@@ -520,8 +520,8 @@ if st.session_state.raw_data:
         }
     )
 
-    # =============================================
-    #   📊 売れやすさ計算 (ご指定の判定ロジックに刷新)
+  # =============================================
+    #   📊 売れやすさ計算（お休み市場ロジック修正版）
     # =============================================
     total_raw_count = len(st.session_state.raw_data)
     target_setting = st.session_state.target_max_items
@@ -544,46 +544,110 @@ if st.session_state.raw_data:
             calc_one_month_ago = datetime.now() - timedelta(days=30)
             
             # --- 【判定用データ集計】 ---
-            # 収集データを元の検索No（露出順）でソート
             sorted_raw_data = sorted(st.session_state.raw_data, key=lambda x: x.get("No.", 0))
-            half_idx = len(sorted_raw_data) // 2
-            bottom_half_items = sorted_raw_data[half_idx:]  # 後半50%の商品リスト
             
             total_artists_count = len(sorted_raw_data)
             under_1000_count = 0        # 全一般作家（評価1000以下）の数
             active_under_1000_count = 0 # 直近1ヶ月以内に動いている一般作家の数
             
-            # 後半50%の中で直近動いている商品があるかフラグ
-            bottom_half_has_recent_sales = False
+            # 【修正】直近3ヶ月以内に売れている商品（日付が入っているもの）のカウント
+            recent_3months_sales_count = 0
             
             for idx, item in enumerate(sorted_raw_data):
                 # 総評価数の数値化
-                try: r_num = int(re.sub(r"\D", "", str(item["総評価数"])))
+                try: r_num = int(re.sub(r"\D", "", str(item.get("ユーザーの総評価数", item.get("総評価数", "0")))))
                 except: r_num = 0
                 
-                # 直近販売日1が1ヶ月以内か判定
-                s1_str = item["直近販売日1"]
-                is_s1_recent = False
-                if s1_str not in ["-", "3ヶ月以上前", "取得失敗"]:
+                # 直近販売日1のデータ取得
+                s1_str = item.get("直近販売日1", "-")
+                
+                # ① 直近3ヶ月以内に売れているか（"-" や "3ヶ月以上前" 以外なら売れている）
+                is_s1_within_3months = s1_str not in ["-", "3ヶ月以上前", "取得失敗"]
+                if is_s1_within_3months:
+                    recent_3months_sales_count += 1
+                
+                # ② 直近販売日1が「1ヶ月以内」か判定（大手・生存率判定用）
+                is_s1_recent_1month = False
+                if is_s1_within_3months:
                     try:
                         s1_dt = datetime.strptime(s1_str, "%Y.%m.%d")
                         if s1_dt >= calc_one_month_ago:
-                            is_s1_recent = True
+                            is_s1_recent_1month = True
                     except: pass
-                
-                # 後半50%のエリアに属している場合、直近販売があるかチェック
-                if idx >= half_idx and is_s1_recent:
-                    bottom_half_has_recent_sales = True
                 
                 # 一般作家（評価1000以下）の集計
                 if r_num <= 1000:
                     under_1000_count += 1
-                    if is_s1_recent:
+                    if is_s1_recent_1month:
                         active_under_1000_count += 1
 
-            # 割合の計算（分母0回避）
+            # 【修正】全体に対する「直近3ヶ月以内に売れている商品」の割合
+            ratio_recent_3months = (recent_3months_sales_count / total_artists_count) if total_artists_count > 0 else 0.0
+            
+            # 大手判定用の割合計算
             ratio_active_vs_total = (active_under_1000_count / total_artists_count) if total_artists_count > 0 else 0.0
             ratio_active_vs_general = (active_under_1000_count / under_1000_count) if under_1000_count > 0 else 0.0
+
+            # --- 【ロジック1】お休み市場の判定（修正） ---
+            # 全商品のうち、3ヶ月以内に動いたものが50%以下（半分以下）なら即お休み判定
+            if ratio_recent_3months <= 0.50:
+                judge_title = "❄️ お休み市場（需要低迷、または停滞）"
+                judge_desc = f"直近3ヶ月以内に一度でも販売が確認できた商品が、全体（{total_artists_count}件）の中で {recent_3months_sales_count}件（{ratio_recent_3months*100:.1f}%）しかありません。市場の半分以上の商品が3ヶ月以上完全にストップしているため、需要が著しく低迷しているか、季節外れの可能性が極めて高いです。別のキーワードでのリサーチを強くお勧めします。"
+                color = "#F8D7DA"
+                final_score = 15
+
+            # --- 【ロジック2】大手が強すぎる市場（レッドオーシャン）の判定 ---
+            elif (ratio_active_vs_total <= 0.15) or (ratio_active_vs_general <= 0.30):
+                judge_title = "⚖️ レッドオーシャン（大手が強すぎる市場）"
+                judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを評価数数千〜数万件のモンスター級大手が独占しており、新着や一般作家が真正面から参入しても埋もれやすい過密市場です。独自タイトルや尖ったコンセプトでの差別化が必須となります。"
+                color = "#FFF3CD"
+                final_score = 35
+
+            # --- 【ロジック3】狙い目・激アツの計算 ---
+            else:
+                survival_rate = ratio_active_vs_general
+                
+                # 検索結果の全体件数に応じた難易度ボーナス/ペナルティ
+                if total_market_items <= 500:
+                    market_bonus = 35
+                elif total_market_items <= 3000:
+                    market_bonus = 20
+                elif total_market_items <= 20000:
+                    market_bonus = 5
+                else:
+                    market_bonus = -int(np.log10(total_market_items / 20000) * 12)
+                    market_bonus = max(market_bonus, -25)
+
+                # スコア計算
+                raw_score = (survival_rate * 70) + 20 + market_bonus
+                final_score = min(max(int(raw_score), 40), 100)
+                
+                if final_score >= 70:
+                    judge_title = "🔥 激アツ（超おすすめ市場）"
+                    judge_desc = f"全体の競合件数（{total_market_items:,}件）が適正、かつ一般作家の生存率が非常に高い『理想的なお宝市場』です。大手に需要を吸い尽くされておらず、新しく商品を出しても上位表示や即売れを狙えるチャンスが極めて高い状態です。"
+                    color = "#D4EDDA"
+                else:
+                    judge_title = "✨ 狙い目（十分にチャンスあり）"
+                    judge_desc = f"適度に市場が回転しており、一般作家でも十分に売上を立てられる健全な市場です。王道から少しずらしたコンセプトや、独自のタイトルワークで攻めることで、さらに高い確率でファンを掴めます。"
+                    color = "#CCE5FF"
+
+            # --- 画面へ表示 ---
+            st.markdown(f"""
+                <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
+                    <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
+                    <h4>判定：{judge_title}</h4>
+                    <p style="font-size:14px; margin-bottom:5px;"><b>🔍 新・判定ロジック算出内訳:</b></p>
+                    <ul>
+                        <li>自動検出された市場総件数: <b>{total_market_items:,} 件</b></li>
+                        <li>📉 <b>直近3ヶ月以内の稼働商品率（基準>50%で稼働）: <span style="font-size:15px; font-weight:bold;">{ratio_recent_3months*100:.1f}%</span></b> ({recent_3months_sales_count}件 / {total_artists_count}件)</li>
+                        <li>解析対象内の一般作家（評価1000以下）: <b>{under_1000_count} 件 / {total_artists_count}件中</b></li>
+                        <li>直近1ヶ月以内に動いている一般作家: <b>{active_under_1000_count} 件</b></li>
+                        <li>📈 一般作家の対全体比率（基準>15%）: <b>{ratio_active_vs_total*100:.1f}%</b></li>
+                        <li>🎯 一般作家の生存比率（基準>30%）: <b>{ratio_active_vs_general*100:.1f}%</b></li>
+                    </ul>
+                    <p style="font-size:14.5px; line-height:1.6; background:rgba(255,255,255,0.5); padding:10px; border-radius:4px; margin-top:10px;"><b>💡 総評:</b><br>{judge_desc}</p>
+                </div>
+            """, unsafe_allow_html=True)
 
             # --- 【ロジック1】お休み市場の判定 ---
             if not bottom_half_has_recent_sales:
