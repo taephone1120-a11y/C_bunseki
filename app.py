@@ -436,7 +436,6 @@ if st.session_state.raw_data:
     st.sidebar.markdown("##### 📅 直近1ヶ月の総評価数")
     filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の総評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
 
-    # 🎯 完全に何もないフラットな状態で判定を開始するロジック
     query_df = df_filter.copy()
     if filter_price_min is not None: query_df = query_df[query_df["_price_num"] >= filter_price_min]
     if filter_price_max is not None: query_df = query_df[query_df["_price_num"] <= filter_price_max]
@@ -447,11 +446,11 @@ if st.session_state.raw_data:
     if filter_rev_min is not None: query_df = query_df[query_df["_rev_num"] >= filter_rev_min]
     if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
     
-    # 直近販売日3の完全初期化（すべて通す）ロジック
+    # 🎯 修正点: 初期条件判定の最優先枠化
     def check_sales3_date_range(date_str):
-        is_default_filter = (filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None)
-        if is_default_filter:
-            return True  # 検索直後なら未取得やハイフンのデータも含め100%全通し
+        # フィルターがデフォルト状態（開始2020.1.1、終了None）なら無条件で100%全通し
+        if filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None:
+            return True
             
         if date_str in ["-", "3ヶ月以上前", "取得失敗"]:
             return False
