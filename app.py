@@ -213,6 +213,7 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
                                 if oldest_date is None or current_date < oldest_date: oldest_date = current_date
                     if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
 
+        # 🎯 各項目の内部キーを定義（表示列名は後ほどマッピング）
         result_data = {
             "No.": 0,
             "作家名": creator,
@@ -371,56 +372,64 @@ if st.session_state.raw_data:
     df_filter = df_orig.copy()
     
     df_filter["_price_num"] = pd.to_numeric(df_filter["価格(円)"], errors='coerce').fillna(0).astype(int)
-    df_filter["_fav_num"] = pd.to_numeric(df_filter["お気に入り数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     df_filter["_buy_num"] = pd.to_numeric(df_filter["購入者数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     df_filter["_recent_num"] = pd.to_numeric(df_filter["直近1ヶ月の評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     
     max_price_val = int(df_filter["_price_num"].max()) if not df_filter.empty else 0
-    max_fav_val = int(df_filter["_fav_num"].max()) if not df_filter.empty else 0
     max_buy_val = int(df_filter["_buy_num"].max()) if not df_filter.empty else 0
     max_rev_val = int(df_filter["_rev_num"].max()) if not df_filter.empty else 0
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
     
+    # 1. 金額(円) フィルター
     st.sidebar.markdown("##### 🪙 金額(円)")
     col_price1, _, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_price_min = col_price1.number_input("🪙 最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
     filter_price_max = col_price2.number_input("🪙 最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
     
-    st.sidebar.markdown("##### ⭐ お気に入り数")
-    col_fav1, _, col_fav2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    filter_fav_min = col_fav1.number_input("⭐ 最小", min_value=0, max_value=max_fav_val, value=0, key="fav_min", label_visibility="collapsed")
-    filter_fav_max = col_fav2.number_input("⭐ 最大", min_value=0, max_value=max_fav_val, value=max_fav_val, key="fav_max", label_visibility="collapsed")
+    # お気に入り数フィルターは削除しました
         
+    # 2. 購入者数 フィルター
     st.sidebar.markdown("##### 🛒 購入者数")
     col_buy1, _, col_buy2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_buy_min = col_buy1.number_input("🛒 最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
     filter_buy_max = col_buy2.number_input("🛒 最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
+    
+    # 3. 🎯 追加：直近販売日3 フィルター（購入者数と総評価数の間）
+    st.sidebar.markdown("##### 📅 直近販売日３")
+    filter_sales3 = st.sidebar.selectbox("📅 直近販売日３の条件", ("すべて", "直近3ヶ月以内に販売履歴あり"), label_visibility="collapsed")
         
-    st.sidebar.markdown("##### 💬 総評価数")
+    # 4. ユーザーの総評価数 フィルター（名称変更）
+    st.sidebar.markdown("##### 💬 ユーザーの総評価数")
     col_rev1, _, col_rev2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_rev_min = col_rev1.number_input("💬 最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
     filter_rev_max = col_rev2.number_input("💬 最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
     
-    st.sidebar.markdown("##### 📅 直近1ヶ月の評価数")
-    filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
+    # 5. 直近1ヶ月の総評価数 フィルター（名称変更）
+    st.sidebar.markdown("##### 📅 直近1ヶ月の総評価数")
+    filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の総評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
 
+    # フィルター適用処理
     query_df = df_filter[
         (df_filter["_price_num"] >= filter_price_min) & (df_filter["_price_num"] <= filter_price_max) &
-        (df_filter["_fav_num"] >= filter_fav_min) & (df_filter["_fav_num"] <= filter_fav_max) &
         (df_filter["_buy_num"] >= filter_buy_min) & (df_filter["_buy_num"] <= filter_buy_max) &
         (df_filter["_rev_num"] >= filter_rev_min) & (df_filter["_rev_num"] <= filter_rev_max)
     ]
+    
+    # 直近販売日3の絞り込み処理
+    if filter_sales3 == "直近3ヶ月以内に販売履歴あり":
+        query_df = query_df[(query_df["直近販売日3"] != "-") & (query_df["直近販売日3"] != "3ヶ月以上前")]
     
     if filter_recent == "1件以上": query_df = query_df[query_df["_recent_num"] >= 1]
     elif filter_recent == "5件以上": query_df = query_df[query_df["_recent_num"] >= 5]
     elif filter_recent == "10件以上": query_df = query_df[query_df["_recent_num"] >= 10]
     elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df["直近1ヶ月の評価数"] == "20件以上")]
 
-    final_df = query_df.drop(columns=["_price_num", "_fav_num", "_buy_num", "_rev_num", "_recent_num"])
+    final_df = query_df.drop(columns=["_price_num", "_buy_num", "_rev_num", "_recent_num"])
     
+    # ご指定の表示順に並び替え
     target_columns = [
         "No.", "作家名", "商品名", "価格(円)", "商品URL", 
         "お気に入り数", "購入者数", "直近販売日1", "直近販売日2", "直近販売日3", 
@@ -430,6 +439,12 @@ if st.session_state.raw_data:
     
     if not final_df.empty: 
         final_df["No."] = range(1, len(final_df) + 1)
+        
+    # 🎯 画面表示用・Excel出力用に指定の列名へマッピング変更
+    final_df = final_df.rename(columns={
+        "総評価数": "ユーザーの総評価数",
+        "直近1ヶ月の評価数": "直近1ヶ月の総評価数"
+    })
     
     st.success(f"📊 条件に一致した商品: {len(final_df)} 件 / 全件中")
     excel_data = convert_df_to_excel(final_df)
