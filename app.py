@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 #   デザインとヘッダー設定
 # =============================================
-st.set_page_config(page_title="Creema市場リサーチツール (デバッグ版)", page_icon="💎", layout="wide")
+st.set_page_config(page_title="Creema市場リサーチツール (バグ修正版)", page_icon="💎", layout="wide")
 
 st.markdown("""
     <style>
@@ -42,7 +42,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("💎 Creema市場リサーチツール (自動ログ監視機能付き)")
+st.title("💎 Creema市場リサーチツール (安定版)")
 st.markdown('<hr style="border: none; border-top: 1px solid #e6e6e6; margin-top: 15px; margin-bottom: 25px; padding: 0;">', unsafe_allow_html=True)
 
 # =============================================
@@ -65,7 +65,7 @@ max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # =============================================
-#   リアルタイムログ管理クラス
+#   安全なログ管理クラス（スレッドセーフ版）
 # =============================================
 class RealTimeLogger:
     def __init__(self):
@@ -73,10 +73,10 @@ class RealTimeLogger:
         self.logs = []
 
     def log(self, message):
+        """メインスレッドから安全に画面を更新するための関数"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_entry = f"[{timestamp}] {message}"
         self.logs.append(log_entry)
-        # 最新のログが下に来るようにして、HTMLとして表示
         log_html = f'<div class="log-box">{"<br>".join(self.logs)}</div>'
         self.placeholder.markdown(log_html, unsafe_allow_html=True)
 
@@ -93,20 +93,19 @@ def send_line_notification(keyword_or_url, item_count):
     except: pass
 
 # =============================================
-#   🎯 特定商品の全販売日を取得（バグ・無限ループ対策版）
+#   🎯 特定商品の全販売日を取得（スレッド安全版）
 # =============================================
-def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago, logger, item_no):
+def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago, task_logs, item_no):
     all_matched_dates = []
     current_page = 1
     current_url = base_rating_url
-    max_pages_to_search = 5  # 🛑 安全対策: 1つの商品で最大5ページまでしか追わない（無限ループ防止）
+    max_pages_to_search = 5  
 
     while current_url and current_page <= max_pages_to_search:
         try:
-            # タイムアウトを8秒に設定し、応答がない場合も次に進むようにする
             res = requests.get(current_url, headers=headers, timeout=8)
             if res.status_code == 403:
-                logger.log(f"⚠️ [商品{item_no}] 評価P{current_page}でアクセス拒否(403)されました。一瞬制限がかかっています。")
+                task_logs.append(f"⚠️ [商品{item_no}] 評価P{current_page}でアクセス拒否(403)されました。")
                 break
             if res.status_code != 200:
                 break
@@ -117,7 +116,6 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                 break
             
             page_has_valid_date = False
-            
             for block in blocks:
                 title_tag = block.select_one(".p-creator-rating-rating__title a")
                 if title_tag and title_tag.text.strip() == target_title:
@@ -141,29 +139,31 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             else:
                 current_url = f"{base_rating_url}?page={current_page}"
                 
-            time.sleep(0.6)  # 🛑 サーバー負荷軽減のため待機時間を少し延長
+            time.sleep(0.6)  
             
         except requests.exceptions.Timeout:
-            logger.log(f"⏳ [商品{item_no}] 評価P{current_page}で通信タイムアウトが発生しました。スキップします。")
+            task_logs.append(f"⏳ [商品{item_no}] 評価P{current_page}で通信タイムアウト。スキップします。")
             break
         except Exception as e:
-            logger.log(f"❌ [商品{item_no}] 評価P{current_page}でエラー: {str(e)}")
+            task_logs.append(f"❌ [商品{item_no}] 評価P{current_page}でエラー: {str(e)}")
             break
             
     all_matched_dates.sort(reverse=True)
     return [d.strftime("%Y.%m.%d") for d in all_matched_dates]
 
 # =============================================
-#   単一商品を解析するコアロジック
+#   単一商品を解析するコアロジック（ログ蓄積版）
 # =============================================
-def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, logger, item_no):
+def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, item_no):
+    # スレッド内での画面書き換えを避け、テキストとして配列にログを溜める
+    task_logs = []
     try:
         link = item_data["link"]
         creator = item_data["creator"]
         title = item_data["title"]
         price = item_data["price"]
 
-        logger.log(f"🔄 [商品{item_no}] 解析開始: {title[:15]}...")
+        task_logs.append(f"🔄 [商品{item_no}] 解析開始: {title[:15]}...")
 
         purchase_count = "パス"
         favorite = "取得失敗"
@@ -202,8 +202,8 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, logge
                     required_sales_count = min(p_num, 3) if p_num > 0 else 0
                 
                 if required_sales_count > 0:
-                    logger.log(f"  🔍 [商品{item_no}] 直近販売日の追跡を開始（目標: {required_sales_count}件）")
-                    sorted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago, logger, item_no)
+                    task_logs.append(f"  🔍 [商品{item_no}] 直近販売日の追跡を開始（目標: {required_sales_count}件）")
+                    sorted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago, task_logs, item_no)
                     
                     for idx in range(required_sales_count):
                         if idx < len(sorted_dates):
@@ -254,16 +254,17 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, logge
                                 if oldest_date is None or current_date < oldest_date: oldest_date = current_date
                     if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
 
-        logger.log(f"✅ [商品{item_no}] 完了（販売日1: {recent_sales[0]}）")
-        return {
+        task_logs.append(f"✅ [商品{item_no}] 完了")
+        result_data = {
             "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
             "お気に入り数": favorite, "購入者数": purchase_count, "総評価数": review,
             "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
             "直近販売日1": recent_sales[0], "直近販売日2": recent_sales[1], "直近販売日3": recent_sales[2],
         }
+        return result_data, task_logs
     except Exception as e:
-        logger.log(f"❌ [商品{item_no}] 重大なエラーでスキップされました: {str(e)}")
-        return None
+        task_logs.append(f"❌ [商品{item_no}] 重大なエラーでスキップされました: {str(e)}")
+        return None, task_logs
 
 # =============================================
 #   メインのスクレイピング制御
@@ -337,13 +338,22 @@ def scrape_creema_fast(start_url, max_num, logger):
     progress_bar = st.progress(0)
     
     scraped_data = []
-    # 🛑 制限対策：並行数を「5」から「3」に落として安全性を上げています
+    
+    # 安全のため並行数を「3」で処理
     with ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago, logger, i+1): i for i, item_data in enumerate(all_item_elements_data)}
+        future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago, i+1): i for i, item_data in enumerate(all_item_elements_data)}
         
         for current_idx, future in enumerate(as_completed(future_to_item), 1):
-            result = future.result()
-            if result: scraped_data.append(result)
+            # スレッド完了後に結果とログテキストを「メインスレッド」で受け取る
+            result, task_logs = future.result()
+            
+            # メインスレッド側で安全に画面へログを一括出力
+            for msg in task_logs:
+                logger.log(msg)
+                
+            if result: 
+                scraped_data.append(result)
+                
             progress_bar.progress(current_idx / total_found)
             status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
             
