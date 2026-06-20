@@ -7,6 +7,7 @@ from urllib.parse import quote
 from datetime import datetime, timedelta
 import pandas as pd
 import io
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # =============================================
@@ -26,6 +27,15 @@ st.markdown("""
     div[data-testid="stSidebarUserContent"] { padding-top: 1rem !important; }
     div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h5 { font-size: 13.5px !important; margin-top: 12px !important; margin-bottom: 5px !important; color: #111111 !important; font-weight: 600 !important; }
     .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div { padding: 6px 10px !important; min-height: 36px !important; height: 36px !important; font-size: 13.5px !important; }
+    
+    /* 判定用スタイル */
+    .metric-card {
+        background-color: #f8f9fa;
+        border-left: 5px solid #1f497d;
+        padding: 15px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -48,7 +58,7 @@ if mode == "キーワード検索":
 else:
     target_url = st.sidebar.text_input("🔗 Creemaの一覧URLを入力", value="")
 
-max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=50, step=10)
+max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=100, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # =============================================
@@ -394,7 +404,7 @@ if st.session_state.raw_data:
     filter_buy_min = col_buy1.number_input("🛒 最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
     filter_buy_max = col_buy2.number_input("🛒 最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
     
-    # 3. 🎯 日付範囲指定に変更：直近販売日３
+    # 3. 直近販売日３ (日付範囲指定)
     st.sidebar.markdown("##### 📅 直近販売日３")
     col_sales3_1, _, col_sales3_2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_sales3_min = col_sales3_1.date_input("📅 開始", value=datetime(2020, 1, 1).date(), max_value=datetime.now().date(), key="sales3_min", label_visibility="collapsed")
@@ -417,7 +427,7 @@ if st.session_state.raw_data:
         (df_filter["_rev_num"] >= filter_rev_min) & (df_filter["_rev_num"] <= filter_rev_max)
     ]
     
-    # 🎯 直近販売日3の日付範囲判定ロジック
+    # 直近販売日3の日付範囲判定ロジック
     def check_sales3_date_range(date_str):
         if date_str in ["-", "3ヶ月以上前"]:
             return False
@@ -465,10 +475,99 @@ if st.session_state.raw_data:
     st.dataframe(
         final_df, 
         use_container_width=True, 
-        height=600, 
+        height=400, 
         hide_index=True,
         column_config={
             "商品名": st.column_config.TextColumn("商品名", width=250), 
             "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")
         }
     )
+
+    # =============================================
+    #   📊 🎯 100件以上の場合のみ使える「売れやすさ計算」機能
+    # =============================================
+    total_raw_count = len(st.session_state.raw_data)
+    
+    st.markdown("---")
+    st.subheader("📊 独立マーケット分析（売れやすさ計算）")
+    
+    if total_raw_count < 100:
+        st.warning(f"⚠️ この機能は100件以上のデータを取得した際にご利用いただけます。（現在: {total_raw_count}件）")
+    else:
+        st.info("💡 100件以上のデータが確認できました。精緻な売れやすさ分析が可能です。")
+        
+        if st.button("📊 売れやすさ指標を計算する", type="secondary"):
+            st.session_state.show_calculator = True
+            
+        if st.session_state.get("show_calculator", False):
+            # Creemaの総検索結果件数を入力してもらう
+            total_market_items = st.number_input(
+                "🔍 Creema上のこのキーワード/カテゴリーの「総検索結果件数」を入力してください（例: 170918）",
+                min_value=100, max_value=5000000, value=170000, step=1000
+            )
+            
+            # 条件合致件数の計算（総合レビュー1000以下、かつ直近販売日3が1ヶ月以内）
+            calc_one_month_ago = datetime.now() - timedelta(days=30)
+            target_match_count = 0
+            
+            for item in st.session_state.raw_data:
+                # ユーザーの総評価数
+                try: r_num = int(re.sub(r"\D", "", item["総評価数"]))
+                except: r_num = 0
+                
+                # 直近販売日3
+                s3_str = item["直近販売日3"]
+                is_s3_recent = False
+                if s3_str not in ["-", "3ヶ月以上前", "取得失敗"]:
+                    try:
+                        s3_dt = datetime.strptime(s3_str, "%Y.%m.%d")
+                        if s3_dt >= calc_one_month_ago:
+                            is_s3_recent = True
+                    except: pass
+                
+                if r_num <= 1000 and is_s3_recent:
+                    target_match_count += 1
+            
+            # 基本アクティブ比率 (A)
+            base_active_rate = target_match_count / total_raw_count
+            
+            # 市場規模ボーナス倍率 (B) - 17万件など巨大市場の上位100件であることの価値を加味
+            # 対数を用いて、100件が市場全体に占める「狭き門度（エリート度）」を補正値化
+            market_elite_index = total_market_items / total_raw_count
+            log_bonus = float(np.log10(market_elite_index)) if market_elite_index > 1 else 1.0
+            
+            # スコア算出 (0 - 100点調整)
+            raw_score = (base_active_rate * 60) + (log_bonus * 12)
+            final_score = min(max(int(raw_score), 5), 100)
+            
+            # 判定ロジック
+            if final_score >= 70:
+                judge_title = "🔥 激アツ（超おすすめ市場）"
+                judge_desc = "上位層が活発に動いているにも関わらず、レビュー1000件以下の「これからの作家」がゴリゴリ売上を上げています。参入価値が極めて高いブルーオーシャンです。"
+                color = "#D4EDDA"
+            elif final_score >= 45:
+                judge_title = "✨ 狙い目（十分にチャンスあり）"
+                judge_desc = "適度に回転しており、新着や工夫次第で上位に食い込める余地が大きいです。強すぎる絶対王者が少なく、戦いやすい市場です。"
+                color = "#CCE5FF"
+            elif final_score >= 25:
+                judge_title = "⚖️ レッドオーシャン（強者独占型）"
+                judge_desc = "上位100件の顔ぶれが固定化されているか、レビュー数数千件の超大手が市場を牛耳っています。凡人が同じ戦い方をしても埋もれるため、ひねり（コンセプト違い）が必要です。"
+                color = "#FFF3CD"
+            else:
+                judge_title = "❄️ お休み市場（需要低迷）"
+                judge_desc = "人気順上位であるにも関わらず、直近1ヶ月以内の動きが鈍いです。市場全体の動きが止まっている可能性があるため、別のキーワードを攻めることをお勧めします。"
+                color = "#F8D7DA"
+                
+            # 結果表示
+            st.markdown(f"""
+                <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
+                    <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
+                    <h4>判定：{judge_title}</h4>
+                    <p style="font-size:14px; margin-bottom:5px;"><b>🔍 算出内訳:</b></p>
+                    <ul>
+                        <li>調査した上位 {total_raw_count} 件中、条件合致（評価1000以下＆1ヶ月以内販売）商品: <b>{target_match_count} 件</b></li>
+                        <li>市場エリート度（総件数 {total_market_items} 件に対する希少価値補正）: <b>ベーススコアに良好に加算済</b></li>
+                    </ul>
+                    <p style="font-size:14.5px; line-height:1.6; background:rgba(255,255,255,0.5); padding:10px; border-radius:4px;">{judge_desc}</p>
+                </div>
+            """, unsafe_allow_html=True)
