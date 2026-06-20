@@ -35,7 +35,7 @@ st.markdown("""
         font-size: 13px !important; 
     }
     
-    /* 🎯 フィルター枠内の「ー」「＋」ボタンを完全に非表示にするCSS */
+    /* フィルター枠内の「ー」「＋」ボタンを完全に非表示にするCSS */
     div[data-testid="stNumberInput"] button {
         display: none !important;
     }
@@ -551,12 +551,8 @@ if st.session_state.raw_data:
             st.session_state.show_calculator = True
             
         if st.session_state.get("show_calculator", False):
-            default_market_total = max(1, int(st.session_state.market_total))
-            
-            total_market_items = st.number_input(
-                "🔍 自動取得された市場全体の総検索結果件数（必要であれば微調整してください）",
-                min_value=1, max_value=5000000, value=default_market_total, step=1000
-            )
+            # 自動取得された市場全体の総検索結果件数をそのまま利用
+            total_market_items = max(1, int(st.session_state.market_total))
             
             calc_one_month_ago = datetime.now() - timedelta(days=30)
             calc_three_months_ago = datetime.now() - timedelta(days=90)
