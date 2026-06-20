@@ -601,16 +601,16 @@ if st.session_state.raw_data:
     else:
         st.markdown(f"**自動ピックアップ完了:** 市場の参考商品が {len(candidate_items)} 件抽出されました。これらを一括分析します。")
         
-        gemini_key = st.text_input("🔑 Gemini APIキーを入力してください", type="password")
-        
-        col_input1, col_input2 = st.columns(2)
-        my_stone_input = col_input1.text_input("🔮 あなたの作品の天然石", value="ラピスラズリ")
-        my_features_input = col_input2.text_area("🛠️ 作品の特徴・こだわり", value="ワイヤー留めのシンプルデザイン", height=100)
+        my_work_description = st.text_area(
+    "📝 あなたの作品の説明・特徴・こだわり", 
+    value="「はだかのお守り」というタイトル。ラピスラズリの天然石をシンプルにワイヤーで留め、360度どの角度からも石を見ることができる、裸のような天然石のリングです。",
+    height=150,
+    help="使用している天然石の名前や、作品のこだわり、デザインの特徴などを自由に入力してください。"
+)
         
         generate_btn = st.button("🚀 市場10選を分析してタイトルを提案してもらう", type="primary")
         
         if generate_btn:
-            # APIキーのチェックは不要になったので削除し、すぐに処理を開始します
             with st.spinner("📝 AI用のプロンプトを作成中..."):
                 
                 # 10件の売れ筋データ（candidate_items）からタイトル一覧のテキストを作成
@@ -627,8 +627,8 @@ if st.session_state.raw_data:
 {items_summary}
 ---
 【出品する作品の情報】
-■使用している天然石: {my_stone_input}
-■作品の特徴・こだわり: {my_features_input}
+■作品の説明・特徴・こだわり:
+{my_work_description}
 ---
 
 以下の構成で出力してください。
@@ -644,11 +644,11 @@ if st.session_state.raw_data:
 3. **【トレンド融合型】**: 今回分析したヒット作品の構成を模倣しつつ、新作の特徴を掛け合わせたバランス型。
 """
             
-            # デザイン枠（ai-box）の中に、完成したプロンプトを表示します
+            # デザイン枠（ai-box）の中に、完成したプロンプトを表示
             st.markdown('<div class="ai-box">', unsafe_allow_html=True)
             st.subheader("📋 AI用コピーテキストの作成完了")
             st.success("✨ 下の枠内のテキストをすべてコピーして、ChatGPTやGeminiのチャット欄に貼り付けてください。")
             
-            # コピーしやすいように大きなテキストエリアで表示します
+            # コピーしやすいように大きなテキストエリアで表示
             st.text_area("以下の文章を丸ごとコピーしてください：", value=final_prompt, height=450)
             st.markdown('</div>', unsafe_allow_html=True)
