@@ -573,7 +573,7 @@ if st.session_state.raw_data:
             calc_three_months_ago = datetime.now() - timedelta(days=90)
             
             total_artists_count = len(st.session_state.raw_data)
-            under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0, 0
+            under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0
             
             for item in st.session_state.raw_data:
                 try: r_num = int(re.sub(r"\D", "", str(item["総評価数"])))
@@ -638,7 +638,6 @@ if st.session_state.raw_data:
     st.markdown("---")
     st.subheader("🤖 Gemini売れ筋アライアンス生成アシスタント")
     
-    # 名称変更対応：final_dfではなく、内部処理用のdf_filterを元にAI用おすすめリストを構築する
     df_recommend = df_filter.copy()
     today_dt = datetime.now()
     one_month_ago_date = (today_dt - timedelta(days=30)).date()
@@ -682,7 +681,8 @@ if st.session_state.raw_data:
             rank_label = f"【優先{row['優先ランク']}】" if row['優先ランク'] != 99 else "【参考】"
             display_name = f"{rank_label} (購入:{row['_buy_num']}人) {row['商品名'][:30]}..."
             select_options.append(display_name)
-            option_to_data[display_name] = row
+            # 【重要】row（Series型）をPython標準の辞書（dict）に完全変換して保存
+            option_to_data[display_name] = row.to_dict()
 
         gemini_key = st.text_input("🔑 Gemini APIキーを入力してください", type="password", help="Google AI Studioで取得したAPIキーを入力します。")
         chosen_option = st.selectbox("🎯 AI分析の参考にする商品（推奨順）", select_options, index=0)
