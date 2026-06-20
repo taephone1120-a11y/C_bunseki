@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
-# 🎨 【CSS再調整】横線の上下に心地よいスペース（余白）を確保
+# 🎨 横線の上下に心地よいスペース（余白）を確保
 st.markdown("""
     <style>
     /* 画面最上部に自然な余白を確保 */
@@ -131,23 +131,95 @@ def send_line_notification(keyword_or_url, item_count):
     except Exception:
         pass
 
+
+# =============================================
+#   🎯 特定商品の直近3件の売れた日付を追跡する関数
+# =============================================
+def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago):
+    """
+    評価一覧をページ送りしながら、該当商品名の入った評価（購入者側の評価日）を最大required_count件抽出する
+    """
+    sales_dates = []
+    current_page = 1
+    current_url = base_rating_url
+
+    while current_url and len(sales_dates) < required_count:
+        try:
+            res = requests.get(current_url, headers=headers, timeout=10)
+            if res.status_code != 200:
+                break
+            
+            soup = BeautifulSoup(res.content, "html.parser")
+            # 評価ごとのブロックを取得
+            blocks = soup.select(".p-creator-rating-rating__content")
+            if not blocks:
+                break
+            
+            page_has_valid_date = False
+            
+            for block in blocks:
+                if len(sales_dates) >= required_count:
+                    break
+                
+                # ブロック内の商品名タイトル部分を確認
+                title_tag = block.select_one(".p-creator-rating-rating__title a")
+                if title_tag and title_tag.text.strip() == target_title:
+                    # 購入者の評価（声）部分の日付を取得
+                    voice_date_tag = block.select_one(".p-creator-rating-rating__voice .p-creator-rating-rating__date")
+                    if voice_date_tag:
+                        date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", voice_date_tag.text)
+                        if date_match:
+                            date_str = date_match.group(1)
+                            review_date = datetime.strptime(date_str, "%Y.%m.%d")
+                            
+                            # 3ヶ月前より新しいか判定
+                            if review_date >= three_months_ago:
+                                sales_dates.append(date_str)
+                                page_has_valid_date = True
+                            else:
+                                # 評価は新しい順に並んでいるため、3ヶ月前の日付が出た時点でこれ以上古いのは追跡不要
+                                return sales_dates
+            
+            # もしこのページに3ヶ月以内のデータが1つもなく、かつブロックが存在していた場合は、これ以上古いページをめくっても無駄なため終了
+            if not page_has_valid_date and current_page > 1:
+                # 1ページ目はたまたま該当商品がないだけの可能性があるので2ページ目以降で判定
+                pass
+
+            # 次のページURLを作成
+            current_page += 1
+            if "?" in base_rating_url:
+                current_url = f"{base_rating_url}&page={current_page}"
+            else:
+                current_url = f"{base_rating_url}?page={current_page}"
+                
+            time.sleep(0.5)
+            
+        except Exception:
+            break
+            
+    return sales_dates
+
+
 # =============================================
 #   単一商品を解析するコアロジック
 # =============================================
-def fetch_single_item(item_data, headers, one_month_ago):
+def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
     try:
         link = item_data["link"]
         creator = item_data["creator"]
         title = item_data["title"]
         price = item_data["price"]
 
-        purchase_count = "記入なし"
+        purchase_count = "パス"
         favorite = "取得失敗"
         review = "取得失敗"
         recent_review_display = "0件"  
         first_review_date = "取得失敗" 
         last_page_url = None
         last_voices = []
+        
+        # 直近3件の販売日初期値
+        recent_sales = ["-", "-", "-"]
         
         detail_res = requests.get(link, headers=headers, timeout=10)
         if detail_res.status_code == 200:
@@ -170,6 +242,37 @@ def fetch_single_item(item_data, headers, one_month_ago):
             if rating_link_tag:
                 base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                 
+                # ---------------------------------------------
+                # 🎯 追記：直近3点の日付ピックアップ処理
+                # ---------------------------------------------
+                # 購入者数数値の割り出し
+                buy_num_match = re.search(r"(\d+)", purchase_count)
+                if buy_num_match:
+                    p_num = int(buy_num_match.group(1))
+                    if p_num == 1:
+                        required_sales_count = 1
+                    elif p_num == 2:
+                        required_sales_count = 2
+                    elif p_num >= 3:
+                        required_sales_count = 3
+                    else:
+                        required_sales_count = 0
+                else:
+                    required_sales_count = 0
+                
+                if required_sales_count > 0:
+                    extracted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago)
+                    
+                    # 取得できた日付を格納。足りない枠には「3ヶ月以上前」を補填
+                    for idx in range(required_sales_count):
+                        if idx < len(extracted_dates):
+                            recent_sales[idx] = extracted_dates[idx]
+                        else:
+                            recent_sales[idx] = "3ヶ月以上前"
+                
+                # ---------------------------------------------
+                # 元々の「直近1ヶ月の評価数」「一番初めの評価日」の解析
+                # ---------------------------------------------
                 rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
                 if rating_res.status_code == 200:
                     rating_soup = BeautifulSoup(rating_res.content, "html.parser")
@@ -238,7 +341,10 @@ def fetch_single_item(item_data, headers, one_month_ago):
             "購入者数": purchase_count,
             "総評価数": review,
             "直近1ヶ月の評価数": recent_review_display,
-            "一番初めの評価日": first_review_date
+            "一番初めの評価日": first_review_date,
+            "直近販売日1": recent_sales[0],
+            "直近販売日2": recent_sales[1],
+            "直近販売日3": recent_sales[2],
         }
     except Exception:
         return None
@@ -248,11 +354,12 @@ def fetch_single_item(item_data, headers, one_month_ago):
 # =============================================
 def scrape_creema_fast(start_url, max_num):
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
     }
     today = datetime.now()
     one_month_ago = today - timedelta(days=30)
+    three_months_ago = today - timedelta(days=90) # 3ヶ月前
     
     all_item_elements_data = []
     current_url = start_url
@@ -330,7 +437,7 @@ def scrape_creema_fast(start_url, max_num):
     scraped_data = []
     
     with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago): i for i, item_data in enumerate(all_item_elements_data)}
+        future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): i for i, item_data in enumerate(all_item_elements_data)}
         
         for current_idx, future in enumerate(as_completed(future_to_item), 1):
             result = future.result()
@@ -346,7 +453,11 @@ def scrape_creema_fast(start_url, max_num):
     if scraped_data:
         for i, item in enumerate(scraped_data, 1):
             item["No."] = i
-        columns_order = ["No.", "作家名", "商品名", "価格(円)", "商品URL", "お気に入り数", "購入者数", "総評価数", "直近1ヶ月の評価数", "一番初めの評価日"]
+        columns_order = [
+            "No.", "作家名", "商品名", "価格(円)", "商品URL", "お気に入り数", "購入者数", 
+            "総評価数", "直近1ヶ月の評価数", "一番初めの評価日", 
+            "直近販売日1", "直近販売日2", "直近販売日3"
+        ]
         return [ {k: item[k] for k in columns_order if k in item} for item in scraped_data ]
     return None
 
@@ -380,7 +491,7 @@ def convert_df_to_excel(df):
                     cell.font = data_font
                     if cell.column in [1, 4]: 
                         cell.alignment = Alignment(horizontal="right", vertical="center")
-                    elif cell.column in [6, 7, 8, 9, 10]: 
+                    elif cell.column in [6, 7, 8, 9, 10, 11, 12, 13]: 
                         cell.alignment = Alignment(horizontal="center", vertical="center")
                     else: 
                         cell.alignment = Alignment(horizontal="left", vertical="center")
