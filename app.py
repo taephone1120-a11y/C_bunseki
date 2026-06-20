@@ -29,24 +29,19 @@ st.markdown("""
     
     /* 入力フォーム全体のコンパクト化設定 */
     .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div { 
-        padding: 4px 6px !important; 
+        padding: 4px 8px !important; 
         min-height: 32px !important; 
         height: 32px !important; 
         font-size: 13px !important; 
     }
     
-    /* 🎯 フィルター枠内の「ー」「＋」ボタンの間隔をキュッと縮めるCSS */
+    /* 🎯 フィルター枠内の「ー」「＋」ボタンを完全に非表示にするCSS */
     div[data-testid="stNumberInput"] button {
-        width: 24px !important;
-        height: 24px !important;
-        min-width: 24px !important;
-        min-height: 24px !important;
-        padding: 0 !important;
-        margin: 2px !important;
+        display: none !important;
     }
+    /* ボタンを消した後の右側余白を詰める調整 */
     div[data-testid="stNumberInput"] div[data-baseline="true"] {
-        padding-left: 4px !important;
-        padding-right: 4px !important;
+        padding-right: 8px !important;
     }
     
     /* 判定用スタイル */
