@@ -1,17 +1,17 @@
-import streamlit as st
-import requests
-from bs4 import BeautifulSoup
+import io
 import re
 import time
-from urllib.parse import quote
-from datetime import datetime, timedelta
-import pandas as pd
-import io
-import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
+from urllib.parse import quote
+import numpy as np
+import pandas as pd
+import requests
+import streamlit as st
+from bs4 import BeautifulSoup
 
 # =============================================
-#   デザインとヘッダー設定
+#  デザインとヘッダー設定
 # =============================================
 st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
@@ -574,7 +574,6 @@ if st.session_state.raw_data:
             calc_three_months_ago = datetime.now() - timedelta(days=90)
             
             total_artists_count = len(st.session_state.raw_data)
-            # 【修正点】変数の数に合わせて、初期値の「0」をきっちり3つ設定
             under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0, 0
             
             for item in st.session_state.raw_data:
@@ -634,11 +633,20 @@ if st.session_state.raw_data:
                 </div>
             """, unsafe_allow_html=True)
 
-   # =============================================
-#   🤖 👑 Gemini作品タイトル提案エリア (更新部分)
-# =============================================
+    # =============================================
+    # 🤖 👑 Gemini作品タイトル提案エリア (復活・修正部分)
+    # =============================================
+    st.markdown("---")
+    st.subheader("🤖 売れ筋10選ベース：作品タイトルAI自動提案")
+
+    # 絞り込み後のデータ（query_df）から購入者数（_buy_num）が多い順に上位10件を自動抽出（バグ修正）
+    if not query_df.empty:
+        candidate_items = query_df.sort_values(by="_buy_num", ascending=False).head(10)
+    else:
+        candidate_items = pd.DataFrame()
+
     if candidate_items.empty:
-        st.warning("⚠️ 参考データが見つかりませんでした。")
+        st.warning("⚠️ 参考データが見つかりませんでした。フィルターを緩めてみてください。")
     else:
         st.markdown(f"**自動ピックアップ完了:** 市場の参考商品が {len(candidate_items)} 件抽出されました。これらを一括分析します。")
         
