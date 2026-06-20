@@ -117,7 +117,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             else:
                 current_url = f"{base_rating_url}?page={current_page}"
                 
-            time.sleep(0.1)  # 🏎️ 爆速化のためウェイトを短縮
+            time.sleep(0.1)  
             
         except:
             break
@@ -304,7 +304,7 @@ def scrape_creema_fast(start_url, max_num):
             if next_tag and "href" in next_tag.attrs:
                 current_url = next_tag["href"] if next_tag["href"].startswith("http") else "https://www.creema.jp" + next_tag["href"]
                 page_count += 1
-                time.sleep(0.5) # 🏎️ ページ遷移ウェイト半減
+                time.sleep(0.5)
             else:
                 current_url = None
         except:
@@ -321,7 +321,6 @@ def scrape_creema_fast(start_url, max_num):
     
     scraped_data = []
     
-    # 🏎️ 変更点1: max_workersを5から「15」へ増やし、並列処理をトリプル爆速化
     with ThreadPoolExecutor(max_workers=15) as executor:
         future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): i for i, item_data in enumerate(all_item_elements_data)}
         
@@ -409,35 +408,35 @@ if st.session_state.raw_data:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
     
-    # 1. 金額(円)
+    # 🪙 金額(円)
     st.sidebar.markdown("##### 🪙 金額(円)")
     col_price1, _, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_price_min = col_price1.number_input("🪙 最小", min_value=0, value=0, key="price_min", label_visibility="collapsed")
     filter_price_max = col_price2.number_input("🪙 最大", min_value=0, value=None, key="price_max", label_visibility="collapsed")
         
-    # 2. 購入者数
+    # 🛒 購入者数
     st.sidebar.markdown("##### 🛒 購入者数")
     col_buy1, _, col_buy2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_buy_min = col_buy1.number_input("🛒 最小", min_value=0, value=0, key="buy_min", label_visibility="collapsed")
     filter_buy_max = col_buy2.number_input("🛒 最大", min_value=0, value=None, key="buy_max", label_visibility="collapsed")
     
-    # 3. 直近販売日３ (日付範囲指定)
+    # 📅 直近販売日３
     st.sidebar.markdown("##### 📅 直近販売日３")
     col_sales3_1, _, col_sales3_2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_sales3_min = col_sales3_1.date_input("📅 開始", value=datetime(2020, 1, 1).date(), max_value=datetime.now().date(), key="sales3_min", label_visibility="collapsed")
     filter_sales3_max = col_sales3_2.date_input("📅 終了", value=None, max_value=datetime.now().date(), key="sales3_max", label_visibility="collapsed")
         
-    # 4. ユーザーの総評価数
+    # 💬 ユーザーの総評価数
     st.sidebar.markdown("##### 💬 ユーザーの総評価数")
     col_rev1, _, col_rev2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_rev_min = col_rev1.number_input("💬 最小", min_value=0, value=0, key="rev_min", label_visibility="collapsed")
     filter_rev_max = col_rev2.number_input("💬 最大", min_value=0, value=None, key="rev_max", label_visibility="collapsed")
     
-    # 5. 直近1ヶ月の総評価数
+    # 📅 直近1ヶ月の総評価数
     st.sidebar.markdown("##### 📅 直近1ヶ月の総評価数")
     filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の総評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
 
-    # 安全な数値フィルタリング
+    # 🎯 完全に何もないフラットな状態で判定を開始するロジック
     query_df = df_filter.copy()
     if filter_price_min is not None: query_df = query_df[query_df["_price_num"] >= filter_price_min]
     if filter_price_max is not None: query_df = query_df[query_df["_price_num"] <= filter_price_max]
@@ -448,13 +447,14 @@ if st.session_state.raw_data:
     if filter_rev_min is not None: query_df = query_df[query_df["_rev_num"] >= filter_rev_min]
     if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
     
-    # 🎯 変更点2: 「直近販売日3」の日付範囲判定ロジックを修正
-    # 初期状態（開始が2020.1.1、終了が空）であれば、「-」や「3ヶ月以上前」の商品も絶対に排除しない
+    # 直近販売日3の完全初期化（すべて通す）ロジック
     def check_sales3_date_range(date_str):
         is_default_filter = (filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None)
-        
+        if is_default_filter:
+            return True  # 検索直後なら未取得やハイフンのデータも含め100%全通し
+            
         if date_str in ["-", "3ヶ月以上前", "取得失敗"]:
-            return True if is_default_filter else False
+            return False
             
         try:
             target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
@@ -462,7 +462,7 @@ if st.session_state.raw_data:
             upper_ok = (filter_sales3_max is None or target_dt <= filter_sales3_max)
             return lower_ok and upper_ok
         except:
-            return True if is_default_filter else False
+            return False
             
     query_df = query_df[query_df["直近販売日3"].apply(check_sales3_date_range)]
     
