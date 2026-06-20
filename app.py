@@ -12,83 +12,44 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 #   デザインとヘッダー設定
 # =============================================
-st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
+st.set_page_config(page_title="Creema市場リサーチツール (デバッグ版)", page_icon="💎", layout="wide")
 
-# 🎨 横線の上下に心地よいスペース（余白）を確保
 st.markdown("""
     <style>
-    /* 画面最上部に自然な余白を確保 */
-    .block-container {
-        padding-top: 2.5rem !important;
-        padding-bottom: 2rem !important;
-    }
-    
-    /* 文字サイズを標準的な「14px」に設定 */
+    .block-container { padding-top: 2.5rem !important; padding-bottom: 2rem !important; }
     html, body, [data-testid="stMarkdownContainer"] p, .stMarkdown p {
         font-size: 14px !important;
         font-family: "Meiryo", "Helvetica Neue", Arial, sans-serif;
         line-height: 1.5 !important;
     }
-    
-    /* 💎 タイトルの表示 */
-    h1 {
-        font-size: 28px !important;
-        font-weight: 700 !important;
-        color: #111111 !important;
-        margin-top: 0px !important;
-        margin-bottom: 0px !important;
-        padding-top: 0px !important;
-        padding-bottom: 0px !important;
-        display: block !important;
-    }
-    
-    /* サイドバーのフィルター項目も見やすい大きさに調整 */
-    div[data-testid="stSidebarUserContent"] {
-        padding-top: 1rem !important;
-    }
-    div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h5 {
-        font-size: 13.5px !important;
-        margin-top: 12px !important;
-        margin-bottom: 5px !important;
-        color: #111111 !important;
-        font-weight: 600 !important;
-    }
-    
-    /* 各要素の間の自然な間隔 */
-    div[data-testid="element-container"] {
-        margin-bottom: 0.5rem !important;
-    }
-    
-    /* 入力欄（ボックス）の高さをしっかり確保 */
-    .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div {
-        padding: 6px 10px !important;
-        min-height: 36px !important;
-        height: 36px !important;
-        font-size: 13.5px !important;
-    }
-    
-    /* 入力欄外側の無駄な余白の最適化 */
-    div[data-testid="stNumberInput"], div[data-testid="stDateInput"] {
-        margin-bottom: 8px !important;
+    h1 { font-size: 28px !important; font-weight: 700 !important; color: #111111 !important; margin: 0 !important; }
+    div[data-testid="stSidebarUserContent"] { padding-top: 1rem !important; }
+    div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h5 { font-size: 13.5px !important; margin-top: 12px !important; margin-bottom: 5px !important; color: #111111 !important; font-weight: 600 !important; }
+    .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div { padding: 6px 10px !important; min-height: 36px !important; height: 36px !important; font-size: 13.5px !important; }
+    /* デバッグログ用スタイリング */
+    .log-box {
+        background-color: #f0f2f6;
+        border-radius: 5px;
+        padding: 10px;
+        font-family: monospace;
+        font-size: 12px;
+        height: 250px;
+        overflow-y: scroll;
+        white-space: pre-wrap;
+        border: 1px solid #dcdcdc;
+        color: #333333;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# 💎 タイトルを表示
-st.title("💎 Creema市場リサーチツール")
-
-# 📍 区切り線と適切なスペース
+st.title("💎 Creema市場リサーチツール (自動ログ監視機能付き)")
 st.markdown('<hr style="border: none; border-top: 1px solid #e6e6e6; margin-top: 15px; margin-bottom: 25px; padding: 0;">', unsafe_allow_html=True)
 
 # =============================================
 #   サイドバー：設定エリア
 # =============================================
 st.sidebar.header("⚙️ 取得条件設定")
-
-mode = st.sidebar.radio(
-    "収集モードを選択してください",
-    ("キーワード検索", "一覧URL直貼り")
-)
+mode = st.sidebar.radio("収集モードを選択してください", ("キーワード検索", "一覧URL直貼り"))
 
 search_keyword = ""
 target_url = ""
@@ -101,52 +62,52 @@ else:
     target_url = st.sidebar.text_input("🔗 Creemaの一覧URLを入力", value="")
 
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=50, step=10)
-
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # =============================================
-#   📲 LINE公式アカウントへ通知を送る関数
+#   リアルタイムログ管理クラス
+# =============================================
+class RealTimeLogger:
+    def __init__(self):
+        self.placeholder = st.empty()
+        self.logs = []
+
+    def log(self, message):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        log_entry = f"[{timestamp}] {message}"
+        self.logs.append(log_entry)
+        # 最新のログが下に来るようにして、HTMLとして表示
+        log_html = f'<div class="log-box">{"<br>".join(self.logs)}</div>'
+        self.placeholder.markdown(log_html, unsafe_allow_html=True)
+
+# =============================================
+#   📲 LINE通知関数
 # =============================================
 def send_line_notification(keyword_or_url, item_count):
     LINE_ACCESS_TOKEN = "SsJj64qF912H/fusrwNgsiMS6bgJqv5C9i5Rx1HlHAmux8AmFlC7Q9Pnx5pbQD/4LXbi2ftiFf1zalCCDcGQAcXBxfakpnkBPLZkKzn5G2gbuQc2vkcn2GbCJ2Yf1HmfEWQoo8KbqqJn4/tsoPr4TwdB04t89/1O/w1cDnyilFU="
     LINE_USER_ID = "Ub5228833332f8fd37bbd3d9072853f2c"
-    
     url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {LINE_ACCESS_TOKEN}"
-    }
-    
-    message_text = (
-        f"💎 【Creemaツール】利用通知\n\n"
-        f"今、誰かがリサーチを開始したよ！\n"
-        f"---------------------\n"
-        f"▼ 検索内容:\n{keyword_or_url}\n\n"
-        f"▼ 解析上限: {item_count} 件"
-    )
-    
-    payload = {"to": LINE_USER_ID, "messages": [{"type": "text", "text": message_text}]}
-    try:
-        requests.post(url, headers=headers, json=payload, timeout=5)
-    except Exception:
-        pass
-
+    headers = { "Content-Type": "application/json", "Authorization": f"Bearer {LINE_ACCESS_TOKEN}" }
+    message_text = f"💎 【Creemaツール】利用通知\n\nリサーチ開始！\n内容:\n{keyword_or_url}\n上限: {item_count} 件"
+    try: requests.post(url, headers=headers, json={"to": LINE_USER_ID, "messages": [{"type": "text", "text": message_text}]}, timeout=5)
+    except: pass
 
 # =============================================
-#   🎯 修正：特定商品の全販売日を取得し、時系列で直近3件を返す関数
+#   🎯 特定商品の全販売日を取得（バグ・無限ループ対策版）
 # =============================================
-def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago):
-    """
-    評価一覧ページを巡回し、該当商品のレビュー日付をすべて集め、
-    「最新の時系列順」にソートした上で直近の必要件数分を返します。
-    """
+def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago, logger, item_no):
     all_matched_dates = []
     current_page = 1
     current_url = base_rating_url
+    max_pages_to_search = 5  # 🛑 安全対策: 1つの商品で最大5ページまでしか追わない（無限ループ防止）
 
-    while current_url:
+    while current_url and current_page <= max_pages_to_search:
         try:
-            res = requests.get(current_url, headers=headers, timeout=10)
+            # タイムアウトを8秒に設定し、応答がない場合も次に進むようにする
+            res = requests.get(current_url, headers=headers, timeout=8)
+            if res.status_code == 403:
+                logger.log(f"⚠️ [商品{item_no}] 評価P{current_page}でアクセス拒否(403)されました。一瞬制限がかかっています。")
+                break
             if res.status_code != 200:
                 break
             
@@ -167,43 +128,42 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                             date_str = date_match.group(1)
                             review_date = datetime.strptime(date_str, "%Y.%m.%d")
                             
-                            # 3ヶ月以内（90日以内）の日付のみを対象に一旦全回収
                             if review_date >= three_months_ago:
                                 all_matched_dates.append(review_date)
                                 page_has_valid_date = True
             
-            # このページに3ヶ月以内の該当商品が1つもなく、かつ1ページ目より先であれば、これ以上古いページを探すのをストップ
             if not page_has_valid_date and current_page > 1:
                 break
 
-            # 次のページURLを作成してループを続行
             current_page += 1
             if "?" in base_rating_url:
                 current_url = f"{base_rating_url}&page={current_page}"
             else:
                 current_url = f"{base_rating_url}?page={current_page}"
                 
-            time.sleep(0.4)
+            time.sleep(0.6)  # 🛑 サーバー負荷軽減のため待機時間を少し延長
             
-        except Exception:
+        except requests.exceptions.Timeout:
+            logger.log(f"⏳ [商品{item_no}] 評価P{current_page}で通信タイムアウトが発生しました。スキップします。")
+            break
+        except Exception as e:
+            logger.log(f"❌ [商品{item_no}] 評価P{current_page}でエラー: {str(e)}")
             break
             
-    # ⏱️ 集まった日付オブジェクトを「新しい順（降順）」に並び替える（これで左右の配置ズレが100%解消されます）
     all_matched_dates.sort(reverse=True)
-    
-    # 文字列のリスト（YYYY.MM.DD）に直して返す
     return [d.strftime("%Y.%m.%d") for d in all_matched_dates]
-
 
 # =============================================
 #   単一商品を解析するコアロジック
 # =============================================
-def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
+def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, logger, item_no):
     try:
         link = item_data["link"]
         creator = item_data["creator"]
         title = item_data["title"]
         price = item_data["price"]
+
+        logger.log(f"🔄 [商品{item_no}] 解析開始: {title[:15]}...")
 
         purchase_count = "パス"
         favorite = "取得失敗"
@@ -212,11 +172,9 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
         first_review_date = "取得失敗" 
         last_page_url = None
         last_voices = []
-        
-        # 直近3件の販売日初期値
         recent_sales = ["-", "-", "-"]
         
-        detail_res = requests.get(link, headers=headers, timeout=10)
+        detail_res = requests.get(link, headers=headers, timeout=8)
         if detail_res.status_code == 200:
             detail_soup = BeautifulSoup(detail_res.content, "html.parser")
             
@@ -237,81 +195,53 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
             if rating_link_tag:
                 base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                 
-                # ---------------------------------------------
-                # 🎯 改善：全回収した日付から必要数を取得
-                # ---------------------------------------------
                 buy_num_match = re.search(r"(\d+)", purchase_count)
+                required_sales_count = 0
                 if buy_num_match:
                     p_num = int(buy_num_match.group(1))
-                    if p_num == 1:
-                        required_sales_count = 1
-                    elif p_num == 2:
-                        required_sales_count = 2
-                    elif p_num >= 3:
-                        required_sales_count = 3
-                    else:
-                        required_sales_count = 0
-                else:
-                    required_sales_count = 0
+                    required_sales_count = min(p_num, 3) if p_num > 0 else 0
                 
                 if required_sales_count > 0:
-                    # ページ内の該当商品日付を全回収してソートされたリストを受け取る
-                    sorted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago)
+                    logger.log(f"  🔍 [商品{item_no}] 直近販売日の追跡を開始（目標: {required_sales_count}件）")
+                    sorted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago, logger, item_no)
                     
-                    # 取得できた純粋な時系列順にセット。枠に満たない分は「3ヶ月以上前」を代入
                     for idx in range(required_sales_count):
                         if idx < len(sorted_dates):
                             recent_sales[idx] = sorted_dates[idx]
                         else:
                             recent_sales[idx] = "3ヶ月以上前"
                 
-                # ---------------------------------------------
-                # 元々の「直近1ヶ月の評価数」「一番初めの評価日」の解析
-                # ---------------------------------------------
-                rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
+                # 直近1ヶ月の評価数解析
+                rating_res = requests.get(base_rating_url, headers=headers, timeout=8)
                 if rating_res.status_code == 200:
                     rating_soup = BeautifulSoup(rating_res.content, "html.parser")
                     voices = rating_soup.select(".p-creator-rating-rating__voice")
                     last_voices = voices 
                     
                     recent_count = 0
-                    total_on_page = len(voices)
-                    
                     for voice in voices:
                         date_tag = voice.select_one(".p-creator-rating-rating__date")
                         if date_tag:
-                            date_text = date_tag.text.strip()
-                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_text)
-                            if date_match:
-                                date_str = date_match.group(1)
-                                review_date = datetime.strptime(date_str, "%Y.%m.%d")
-                                if review_date >= one_month_ago:
-                                    recent_count += 1
+                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text.strip())
+                            if date_match and datetime.strptime(date_match.group(1), "%Y.%m.%d") >= one_month_ago:
+                                recent_count += 1
                     
-                    if recent_count >= 20 and total_on_page >= 20:
-                        recent_review_display = "20件以上"
-                    else:
-                        recent_review_display = f"{recent_count}件"
+                    recent_review_display = "20件以上" if (recent_count >= 20 and len(voices) >= 20) else f"{recent_count}件"
 
                     all_links = rating_soup.find_all("a", href=True)
                     page_data = []
-                    
                     for a_tag in all_links:
                         href = a_tag["href"]
                         p_match = re.search(r"page=(\d+)", href) or re.search(r"/rating/sale/(\d+)", href)
                         if p_match:
-                            p_num = int(p_match.group(1))
-                            full_url = href if href.startswith("http") else "https://www.creema.jp" + href
-                            page_data.append((p_num, full_url))
-                    
+                            page_data.append((int(p_match.group(1)), href if href.startswith("http") else "https://www.creema.jp" + href))
                     if page_data:
                         _, last_page_url = max(page_data, key=lambda x: x[0])
 
                 if last_page_url:
-                    last_page_res = requests.get(last_page_url, headers=headers, timeout=10)
+                    last_page_res = requests.get(last_page_url, headers=headers, timeout=8)
                     if last_page_res.status_code == 200:
-                        rating_soup = BeautifulSoup(last_page_res.content, "html.parser")
-                        last_voices = rating_soup.select(".p-creator-rating-rating__voice")
+                        last_voices = BeautifulSoup(last_page_res.content, "html.parser").select(".p-creator-rating-rating__voice")
                 
                 if last_voices:
                     oldest_date = None
@@ -321,139 +251,109 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
                             date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
                             if date_match:
                                 current_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                if oldest_date is None or current_date < oldest_date:
-                                        oldest_date = current_date
-                    
-                    if oldest_date:
-                        first_review_date = oldest_date.strftime("%Y.%m.%d")
+                                if oldest_date is None or current_date < oldest_date: oldest_date = current_date
+                    if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
 
+        logger.log(f"✅ [商品{item_no}] 完了（販売日1: {recent_sales[0]}）")
         return {
-            "作家名": creator,
-            "商品名": title,
-            "価格(円)": price,
-            "商品URL": link,
-            "お気に入り数": favorite,
-            "購入者数": purchase_count,
-            "総評価数": review,
-            "直近1ヶ月の評価数": recent_review_display,
-            "一番初めの評価日": first_review_date,
-            "直近販売日1": recent_sales[0],
-            "直近販売日2": recent_sales[1],
-            "直近販売日3": recent_sales[2],
+            "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
+            "お気に入り数": favorite, "購入者数": purchase_count, "総評価数": review,
+            "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
+            "直近販売日1": recent_sales[0], "直近販売日2": recent_sales[1], "直近販売日3": recent_sales[2],
         }
-    except Exception:
+    except Exception as e:
+        logger.log(f"❌ [商品{item_no}] 重大なエラーでスキップされました: {str(e)}")
         return None
 
 # =============================================
 #   メインのスクレイピング制御
 # =============================================
-def scrape_creema_fast(start_url, max_num):
+def scrape_creema_fast(start_url, max_num, logger):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
     }
     today = datetime.now()
     one_month_ago = today - timedelta(days=30)
-    three_months_ago = today - timedelta(days=90) # 3ヶ月前
+    three_months_ago = today - timedelta(days=90)
     
     all_item_elements_data = []
     current_url = start_url
     page_count = 1
     
+    logger.log("====== 🕵️ 一覧ページの巡回を開始します ======")
     page_status = st.empty()
     
     while current_url and len(all_item_elements_data) < max_num:
         page_status.info(f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています (収集済リンク: {len(all_item_elements_data)}件)")
         try:
             response = requests.get(current_url, headers=headers, timeout=10)
-            if response.status_code != 200:
+            if response.status_code == 403:
+                logger.log("❌ 一覧ページでアクセス拒否(403)されました。ロボット判定された可能性があります。")
                 break
+            if response.status_code != 200: break
             soup = BeautifulSoup(response.content, "html.parser")
             
             items = soup.select("article.c-item-article")
-            if not items:
-                break
+            if not items: break
                 
             for item in items:
-                if len(all_item_elements_data) >= max_num:
-                    break
-                    
+                if len(all_item_elements_data) >= max_num: break
                 title_tag = item.select_one('.c-item-article__name a[href*="/item/"]')
-                if not title_tag:
-                    continue
+                if not title_tag: continue
                     
-                title = title_tag.text.strip()
-                if not title and title_tag.find("img"):
-                    title = title_tag.find("img")["alt"].strip()
-                    
+                title = title_tag.text.strip() or (title_tag.find("img")["alt"].strip() if title_tag.find("img") else "")
                 link = "https://www.creema.jp" + title_tag["href"]
                 
                 desc_tag = item.select_one(".c-item-article__desc")
-                creator = "取得失敗"
-                price = 0
-                if desc_tag:
-                    desc_text = desc_tag.text.strip()
-                    if "/" in desc_text:
-                        parts = desc_text.split("/")
-                        price = int(re.sub(r"\D", "", parts[0])) if parts[0] else 0
-                        creator = parts[1].strip()
+                creator, price = "取得失敗", 0
+                if desc_tag and "/" in desc_tag.text:
+                    parts = desc_tag.text.split("/")
+                    price = int(re.sub(r"\D", "", parts[0])) if parts[0] else 0
+                    creator = parts[1].strip()
                 
-                all_item_elements_data.append({
-                    "link": link,
-                    "creator": creator,
-                    "title": title,
-                    "price": price
-                })
+                all_item_elements_data.append({"link": link, "creator": creator, "title": title, "price": price})
             
             next_tag = soup.select_one("a.c-pagination__next")
             if next_tag and "href" in next_tag.attrs:
-                next_href = next_tag["href"]
-                current_url = next_href if next_href.startswith("http") else "https://www.creema.jp" + next_href
+                current_url = next_tag["href"] if next_tag["href"].startswith("http") else "https://www.creema.jp" + next_tag["href"]
                 page_count += 1
-                time.sleep(1)
+                time.sleep(1.2)
             else:
                 current_url = None
-                
         except Exception as e:
-            st.error(f"ページ巡回中にエラーが発生しました: {e}")
+            logger.log(f"❌ 一覧ページ巡回中にエラー: {str(e)}")
             break
             
     page_status.empty()
     total_found = len(all_item_elements_data)
     
     if total_found == 0:
-        st.warning("商品が見つかりませんでした。")
+        logger.log("❌ 有効な商品が1件も見つかりませんでした。")
         return None
         
+    logger.log(f"====== 📊 詳細解析スタート (合計: {total_found}件) ======")
     status_text = st.empty()
-    status_text.info(f"🚀 合計 {total_found}件 の商品リンクを獲得！ 5件ずつ並行で詳細リサーチを行っています...")
     progress_bar = st.progress(0)
     
     scraped_data = []
-    
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): i for i, item_data in enumerate(all_item_elements_data)}
+    # 🛑 制限対策：並行数を「5」から「3」に落として安全性を上げています
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago, logger, i+1): i for i, item_data in enumerate(all_item_elements_data)}
         
         for current_idx, future in enumerate(as_completed(future_to_item), 1):
             result = future.result()
-            if result:
-                scraped_data.append(result)
-            
+            if result: scraped_data.append(result)
             progress_bar.progress(current_idx / total_found)
             status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
             
     progress_bar.empty()
     status_text.empty()
+    logger.log("====== 🎉 全ての解析工程が完了しました！ ======")
     
     if scraped_data:
-        for i, item in enumerate(scraped_data, 1):
-            item["No."] = i
-        columns_order = [
-            "No.", "作家名", "商品名", "価格(円)", "商品URL", "お気に入り数", "購入者数", 
-            "総評価数", "直近1ヶ月の評価数", "一番初めの評価日", 
-            "直近販売日1", "直近販売日2", "直近販売日3"
-        ]
-        return [ {k: item[k] for k in columns_order if k in item} for item in scraped_data ]
+        for i, item in enumerate(scraped_data, 1): item["No."] = i
+        return scraped_data
     return None
 
 # =============================================
@@ -464,16 +364,11 @@ def convert_df_to_excel(df):
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name="リサーチ結果", index=False)
         worksheet = writer.sheets["リサーチ結果"]
-        
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         header_font = Font(name="Meiryo", size=11, bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
         data_font = Font(name="Meiryo", size=10)
-        
-        thin_border = Border(
-            left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
-            top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
-        )
+        thin_border = Border(left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'), top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9'))
         
         for row in worksheet.iter_rows(min_row=1, max_row=len(df)+1):
             for cell in row:
@@ -484,18 +379,12 @@ def convert_df_to_excel(df):
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 else:
                     cell.font = data_font
-                    if cell.column in [1, 4]: 
-                        cell.alignment = Alignment(horizontal="right", vertical="center")
-                    elif cell.column in [6, 7, 8, 9, 10, 11, 12, 13]: 
-                        cell.alignment = Alignment(horizontal="center", vertical="center")
-                    else: 
-                        cell.alignment = Alignment(horizontal="left", vertical="center")
-                        
+                    if cell.column in [1, 4]: cell.alignment = Alignment(horizontal="right", vertical="center")
+                    elif cell.column in [6, 7, 8, 9, 10, 11, 12, 13]: cell.alignment = Alignment(horizontal="center", vertical="center")
+                    else: cell.alignment = Alignment(horizontal="left", vertical="center")
         for col in worksheet.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
-            col_letter = col[0].column_letter
-            worksheet.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 50)
-            
+            worksheet.column_dimensions[col[0].column_letter].width = min(max(max_len + 3, 10), 50)
     return output.getvalue()
 
 # =============================================
@@ -508,15 +397,16 @@ if start_button:
     if mode == "一覧URL直貼り" and not target_url:
         st.error("⚠️ URLを入力してください。")
     else:
+        st.subheader("📋 リアルタイム解析ログ（不具合監視用）")
+        logger = RealTimeLogger()
+        
         cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
         send_line_notification(cond_text, max_items)
         
-        start_time = time.time()
-        data = scrape_creema_fast(target_url, max_items)
+        data = scrape_creema_fast(target_url, max_items, logger)
         if data:
-            elapsed_time = time.time() - start_time
-            st.toast(f"🎉 取得完了！ 処理時間: {elapsed_time:.1f}秒", icon="✅")
             st.session_state.raw_data = data
+            st.toast("🎉 取得完了しました！", icon="✅")
 
 if st.session_state.raw_data:
     df_orig = pd.DataFrame(st.session_state.raw_data)
@@ -533,67 +423,37 @@ if st.session_state.raw_data:
     max_buy_val = int(df_filter["_buy_num"].max()) if not df_filter.empty else 0
     max_rev_val = int(df_filter["_rev_num"].max()) if not df_filter.empty else 0
 
-    # =============================================
-    #   サイドバー：データ絞り込みフィルター
-    # =============================================
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
     
     st.sidebar.markdown("##### 🪙 金額(円)")
-    col_price1, col_price_mid, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    with col_price1:
-        filter_price_min = st.number_input("🪙 金額 最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
-    with col_price_mid:
-        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
-    with col_price2:
-        filter_price_max = st.number_input("🪙 金額 最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
+    col_price1, _, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
+    filter_price_min = col_price1.number_input("🪙 最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
+    filter_price_max = col_price2.number_input("🪙 最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
     
     st.sidebar.markdown("##### ⭐ お気に入り数")
-    col_fav1, col_fav_mid, col_fav2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    with col_fav1:
-        filter_fav_min = st.number_input("⭐ お気に入り数 最小", min_value=0, max_value=max_fav_val, value=0, key="fav_min", label_visibility="collapsed")
-    with col_fav_mid:
-        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
-    with col_fav2:
-        filter_fav_max = st.number_input("⭐ お気に入り数 最大", min_value=0, max_value=max_fav_val, value=max_fav_val, key="fav_max", label_visibility="collapsed")
+    col_fav1, _, col_fav2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
+    filter_fav_min = col_fav1.number_input("⭐ 最小", min_value=0, max_value=max_fav_val, value=0, key="fav_min", label_visibility="collapsed")
+    filter_fav_max = col_fav2.number_input("⭐ 最大", min_value=0, max_value=max_fav_val, value=max_fav_val, key="fav_max", label_visibility="collapsed")
         
     st.sidebar.markdown("##### 🛒 購入者数")
-    col_buy1, col_buy_mid, col_buy2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    with col_buy1:
-        filter_buy_min = st.number_input("🛒 購入者数 最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
-    with col_buy_mid:
-        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
-    with col_buy2:
-        filter_buy_max = st.number_input("🛒 購入者数 最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
+    col_buy1, _, col_buy2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
+    filter_buy_min = col_buy1.number_input("🛒 最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
+    filter_buy_max = col_buy2.number_input("🛒 最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
         
     st.sidebar.markdown("##### 💬 総評価数")
-    col_rev1, col_rev_mid, col_rev2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    with col_rev1:
-        filter_rev_min = st.number_input("💬 総評価数 最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
-    with col_rev_mid:
-        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
-    with col_rev2:
-        filter_rev_max = st.number_input("💬 総評価数 最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
+    col_rev1, _, col_rev2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
+    filter_rev_min = col_rev1.number_input("💬 最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
+    filter_rev_max = col_rev2.number_input("💬 最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
     
     st.sidebar.markdown("##### 📅 直近1ヶ月の評価数")
-    filter_recent = st.sidebar.selectbox(
-        "📅 直近1ヶ月の評価数",
-        ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"),
-        label_visibility="collapsed"
-    )
+    filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
     
     st.sidebar.markdown("##### ⏱️ 一番初めの評価日")
-    col_date1, col_date_mid, col_date2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    with col_date1:
-        filter_date_min = st.date_input("⏱️ 一番初めの評価日 開始日", value=datetime(2010, 1, 1).date(), max_value=datetime.now().date(), key="date_min", label_visibility="collapsed")
-    with col_date_mid:
-        st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
-    with col_date2:
-        filter_date_max = st.date_input("⏱️ 一番初めの評価日 終了日", value=datetime.now().date(), max_value=datetime.now().date(), key="date_max", label_visibility="collapsed")
+    col_date1, _, col_date2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
+    filter_date_min = col_date1.date_input("⏱️ 開始", value=datetime(2010, 1, 1).date(), max_value=datetime.now().date(), key="date_min", label_visibility="collapsed")
+    filter_date_max = col_date2.date_input("⏱️ 終了", value=datetime.now().date(), max_value=datetime.now().date(), key="date_max", label_visibility="collapsed")
 
-    # =============================================
-    #   フィルター条件の適用
-    # =============================================
     query_df = df_filter[
         (df_filter["_price_num"] >= filter_price_min) & (df_filter["_price_num"] <= filter_price_max) &
         (df_filter["_fav_num"] >= filter_fav_min) & (df_filter["_fav_num"] <= filter_fav_max) &
@@ -601,52 +461,30 @@ if st.session_state.raw_data:
         (df_filter["_rev_num"] >= filter_rev_min) & (df_filter["_rev_num"] <= filter_rev_max)
     ]
     
-    if filter_recent == "1件以上":
-        query_df = query_df[query_df["_recent_num"] >= 1]
-    elif filter_recent == "5件以上":
-        query_df = query_df[query_df["_recent_num"] >= 5]
-    elif filter_recent == "10件以上":
-        query_df = query_df[query_df["_recent_num"] >= 10]
-    elif filter_recent == "20件以上":
-        query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df["直近1ヶ月の評価数"] == "20件以上")]
+    if filter_recent == "1件以上": query_df = query_df[query_df["_recent_num"] >= 1]
+    elif filter_recent == "5件以上": query_df = query_df[query_df["_recent_num"] >= 5]
+    elif filter_recent == "10件以上": query_df = query_df[query_df["_recent_num"] >= 10]
+    elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df["直近1ヶ月の評価数"] == "20件以上")]
 
     def check_date_range(date_str):
         try:
-            if date_str == "取得失敗":
-                return False
-            d = datetime.strptime(date_str, "%Y.%m.%d").date()
-            return filter_date_min <= d <= filter_date_max
-        except:
-            return False
+            if date_str == "取得失敗": return False
+            return filter_date_min <= datetime.strptime(date_str, "%Y.%m.%d").date() <= filter_date_max
+        except: return False
             
     query_df = query_df[query_df["一番初めの評価日"].apply(check_date_range)]
-
     final_df = query_df.drop(columns=["_price_num", "_fav_num", "_buy_num", "_rev_num", "_recent_num"])
-    if not final_df.empty:
-        final_df["No."] = range(1, len(final_df) + 1)
+    if not final_df.empty: final_df["No."] = range(1, len(final_df) + 1)
     
-    # =============================================
-    #   結果表示エリア
-    # =============================================
     st.success(f"📊 条件に一致した商品: {len(final_df)} 件 / 全件中")
-    
-    download_filename = f"Creemaリサーチ_絞り込み済_{datetime.now().strftime('%Y%m%d')}.xlsx"
     excel_data = convert_df_to_excel(final_df)
     
     st.download_button(
         label="📥 絞り込んだデータをExcelでダウンロード",
         data=excel_data,
-        file_name=download_filename,
+        file_name=f"Creemaリサーチ_絞り込み済_{datetime.now().strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     
     st.subheader("👀 絞り込み結果のプレビュー")
-    st.dataframe(
-        final_df, 
-        use_container_width=True,
-        height=800,
-        column_config={
-            "商品名": st.column_config.TextColumn("商品名", width=250),
-            "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")
-        }
-    )
+    st.dataframe(final_df, use_container_width=True, height=600, column_config={"商品名": st.column_config.TextColumn("商品名", width=250), "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")})
