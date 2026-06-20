@@ -708,7 +708,7 @@ my_product_title = st.text_input(
 )
 
 # 紹介文生成用のボタン
-generate_desc_btn = st.button("🚀 市場10選を分析して作品紹介文を提案してもらう", type="secondary")
+generate_desc_btn = st.button("🚀 市場10選を分析して作品紹介文を提案してもらう", type="primary")
 
 if generate_desc_btn:
     with st.spinner("🕵️‍♂️ 市場10選の作品ページから、リアルタイムに紹介文を読み込んでいます（数秒かかります）..."):
