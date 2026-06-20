@@ -573,7 +573,8 @@ if st.session_state.raw_data:
             calc_three_months_ago = datetime.now() - timedelta(days=90)
             
             total_artists_count = len(st.session_state.raw_data)
-            under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0
+            # 【修正点】変数の数に合わせて、初期値の「0」をきっちり3つ設定
+            under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0, 0
             
             for item in st.session_state.raw_data:
                 try: r_num = int(re.sub(r"\D", "", str(item["総評価数"])))
@@ -681,7 +682,6 @@ if st.session_state.raw_data:
             rank_label = f"【優先{row['優先ランク']}】" if row['優先ランク'] != 99 else "【参考】"
             display_name = f"{rank_label} (購入:{row['_buy_num']}人) {row['商品名'][:30]}..."
             select_options.append(display_name)
-            # 【重要】row（Series型）をPython標準の辞書（dict）に完全変換して保存
             option_to_data[display_name] = row.to_dict()
 
         gemini_key = st.text_input("🔑 Gemini APIキーを入力してください", type="password", help="Google AI Studioで取得したAPIキーを入力します。")
