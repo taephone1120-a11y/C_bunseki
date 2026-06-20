@@ -390,50 +390,51 @@ def convert_df_to_excel(df):
     return output.getvalue()
 
 # =============================================
-#   📞 Gemini API 呼び出し関数
+#   📞 Gemini API 呼び出し関数 (一括分析・改善版)
 # =============================================
-def generate_text_with_gemini(api_key, target_title, target_desc, my_stone, my_features):
+def generate_text_with_gemini_batch(api_key, candidate_items, my_stone, my_features):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     
+    # 候補商品の情報をリストアップ
+    items_summary = ""
+    for _, row in candidate_items.iterrows():
+        items_summary += f"■タイトル: {row['商品名']} (購入者数: {row['_buy_num']}人)\n"
+    
     prompt = f"""
-あなたはハンドメイドマーケット（Creema / minne）での作品プロモーション、およびコピーライティングの専門家です。
-現在市場で実際に売れている「参考作品」のデータ（タイトル・紹介文）を分析し、その強みや売れる要素を抽出した上で、ユーザーの新作のための「作品タイトル」および「作品紹介文」を魅力的に提案してください。
+あなたはハンドメイドマーケット（Creema/minne）の市場リサーチとコピーライティングのプロフェッショナルです。
+現在、以下の10件の「売れ筋作品」のタイトルを分析対象とします。これらのデータから、市場でクリック率を稼いでいるキーワード選定や構成の法則を導き出し、ユーザーの新作のためのタイトル案を作成してください。
 
 ---
-【分析対象の参考作品（売れ筋）】
-■作品タイトル: {target_title}
-■作品紹介文:
-{target_desc}
+【分析対象：売れ筋商品10選】
+{items_summary}
 
 ---
-【ユーザーがこれから出品したい作品の情報】
+【ユーザーの新作情報】
 ■使用している天然石: {my_stone}
-■作品の特徴・こだわり・仕様:
-{my_features}
+■作品の特徴・こだわり: {my_features}
 ---
 
-以下の構成で、丁寧に出力してください。
+以下の構成で回答してください。
 
-### 1. 参考作品の徹底分析結果
-* **タイトルの傾向**: 参考作品がどのようなキーワードの並び順、フック（【】や記号の使い方）を用いてクリック率を上げているか分析してください。
-* **紹介文の構成・アピール手法**: 読者の心をつかむストーリー構成、スペック表記、購入特典の魅せ方などを分析してください。
-* **多用されているヒットキーワード**: このジャンルで刺さりやすい、参考作品内で効果的に使われているキーワードを箇条書きで5〜7個抽出してください。
+### 1. 市場タイトルの分析
+* **トレンドの法則**: 10件のデータを分析し、ヒットしている作品に共通する「キーワードの並び順」「フック（記号や訴求点）」の傾向を解説してください。
+* **多用されているヒットキーワード**: 上記のジャンルで検索されやすい、または目を引くキーワードを5つ抽出してください。
 
-### 2. あなたの作品用：作品タイトル提案（5選）
-参考作品のタイトル文字数やキーワードの並べ方の法則を引き継ぎつつ、ユーザーの作品用にアレンジしたタイトルを、それぞれ異なる切り口で5パターン作成してください。（文字数はCreema/minneに適した範囲内）。
-
-### 3. あなたの作品用：作品紹介文の提案
-参考作品の「売れる構成（導入文の引き込み、作品の背景、スペック、お手入れ方法、ラッピング案内など）」の黄金比を真似しつつ、ユーザーの作品特徴を最大限に魅力化させた、そのままコピー＆ペーストで使える紹介文を作成してください。ハッシュタグ（#）の提案も含めてください。
+### 2. 新作タイトル案（3選）
+分析結果に基づき、以下の3つの切り口でタイトルを提案してください。
+1. **【検索ボリューム重視】**: 上位キーワードを戦略的に盛り込んだ、検索に引っかかりやすいタイトル。
+2. **【情緒的訴求重視】**: ユーザーのこだわりや天然石の魅力を最大限に伝える、ストーリー性を重視したタイトル。
+3. **【トレンド融合型】**: 今回分析したヒット作品の構成を模倣しつつ、新作の特徴を掛け合わせたバランス型。
 """
     
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=30)
+        res = requests.post(url, headers=headers, json=payload, timeout=40)
         if res.status_code == 200:
             return res.json()["candidates"][0]["content"]["parts"][0]["text"]
         else:
-            return f"❌ Gemini APIエラー (Status Code: {res.status_code})\n{res.text}"
+            return f"❌ Gemini APIエラー (Status Code: {res.status_code})"
     except Exception as e:
         return f"❌ 通信エラーが発生しました: {str(e)}"
 
@@ -633,86 +634,34 @@ if st.session_state.raw_data:
                 </div>
             """, unsafe_allow_html=True)
 
-    # =============================================
-    #   🤖 👑 Gemini作品タイトル・紹介文提案生成エリア
-    # =============================================
-    st.markdown("---")
-    st.subheader("🤖 Gemini売れ筋アライアンス生成アシスタント")
-    
-    df_recommend = df_filter.copy()
-    today_dt = datetime.now()
-    one_month_ago_date = (today_dt - timedelta(days=30)).date()
-    three_months_ago_date = (today_dt - timedelta(days=90)).date()
-    
-    def get_date_obj(d_str):
-        if d_str in ["-", "3ヶ月以上前", "取得失敗"]: return None
-        try: return datetime.strptime(d_str, "%Y.%m.%d").date()
-        except: return None
-
-    df_recommend["_date1_obj"] = df_recommend["直近販売日1"].apply(get_date_obj)
-    df_recommend["_date3_obj"] = df_recommend["直近販売日3"].apply(get_date_obj)
-    
-    def calc_priority_rank(row):
-        d1 = row["_date1_obj"]
-        d3 = row["_date3_obj"]
-        buy = row["_buy_num"]
-        
-        if d3 and d3 >= one_month_ago_date and buy <= 500: return 1
-        if d3 and d3 >= one_month_ago_date and buy <= 1000: return 2
-        if d1 and d1 >= one_month_ago_date and buy <= 1000: return 3
-        if d1 and d1 >= three_months_ago_date and buy <= 1000: return 4
-        return 99 
-
-    df_recommend["優先ランク"] = df_recommend.apply(calc_priority_rank, axis=1)
-    df_recommend = df_recommend.sort_values(by=["優先ランク", "_buy_num"], ascending=[True, True])
-    
-    candidate_items = df_recommend[df_recommend["優先ランク"] != 99].head(10)
-    if len(candidate_items) < 10:
-        backup = df_recommend[df_recommend["優先ランク"] == 99].head(10 - len(candidate_items))
-        candidate_items = pd.concat([candidate_items, backup])
-
+   # =============================================
+#   🤖 👑 Gemini作品タイトル提案エリア (更新部分)
+# =============================================
     if candidate_items.empty:
-        st.warning("⚠️ 現在のデータの中に、分析の参考としておすすめできる商品が見つかりませんでした。絞り込み条件を緩めて再取得してください。")
+        st.warning("⚠️ 参考データが見つかりませんでした。")
     else:
-        st.markdown(f"**自動ピックアップ完了:** 最適な参考商品が {len(candidate_items)} 件見つかりました。")
+        st.markdown(f"**自動ピックアップ完了:** 市場の参考商品が {len(candidate_items)} 件抽出されました。これらを一括分析します。")
         
-        select_options = []
-        option_to_data = {}
-        for idx, row in candidate_items.iterrows():
-            rank_label = f"【優先{row['優先ランク']}】" if row['優先ランク'] != 99 else "【参考】"
-            display_name = f"{rank_label} (購入:{row['_buy_num']}人) {row['商品名'][:30]}..."
-            select_options.append(display_name)
-            option_to_data[display_name] = row.to_dict()
-
-        gemini_key = st.text_input("🔑 Gemini APIキーを入力してください", type="password", help="Google AI Studioで取得したAPIキーを入力します。")
-        chosen_option = st.selectbox("🎯 AI分析の参考にする商品（推奨順）", select_options, index=0)
+        gemini_key = st.text_input("🔑 Gemini APIキーを入力してください", type="password")
         
         col_input1, col_input2 = st.columns(2)
         my_stone_input = col_input1.text_input("🔮 あなたの作品の天然石", value="ラピスラズリ")
-        my_features_input = col_input2.text_area(
-            "🛠️ 作品の特徴・こだわり",
-            value="「はだかのお守り」シリーズ。天然石をワイヤーでシンプルに留め、360度美しく見せるデザイン。",
-            height=100
-        )
+        my_features_input = col_input2.text_area("🛠️ 作品の特徴・こだわり", value="ワイヤー留めのシンプルデザイン", height=100)
         
-        generate_btn = st.button("🚀 売れ筋を分析して提案してもらう", type="primary")
+        generate_btn = st.button("🚀 市場10選を分析してタイトルを提案してもらう", type="primary")
         
         if generate_btn:
             if not gemini_key:
-                st.error("⚠️ Gemini APIキーを入力してください。")
-            elif option_to_data[chosen_option]["作品紹介文"] == "取得失敗":
-                st.error("⚠️ この商品の紹介文は取得できませんでした。別の商品を選択してください。")
+                st.error("⚠️ APIキーを入力してください。")
             else:
-                selected_row = option_to_data[chosen_option]
-                with st.spinner("🧙‍♂️ AIが売れ筋を分析中..."):
-                    ai_result = generate_text_with_gemini(
+                with st.spinner("🧙‍♂️ AIが市場全体を俯瞰分析中..."):
+                    ai_result = generate_text_with_gemini_batch(
                         api_key=gemini_key,
-                        target_title=selected_row["商品名"],
-                        target_desc=selected_row["作品紹介文"],
+                        candidate_items=candidate_items,
                         my_stone=my_stone_input,
                         my_features=my_features_input
                     )
                 st.markdown('<div class="ai-box">', unsafe_allow_html=True)
-                st.subheader("✨ Gemini分析結果")
+                st.subheader("✨ 市場トレンド分析 & タイトル案")
                 st.markdown(ai_result)
                 st.markdown('</div>', unsafe_allow_html=True)
