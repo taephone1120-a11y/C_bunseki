@@ -626,12 +626,12 @@ if st.session_state.raw_data:
             """, unsafe_allow_html=True)
 
     # =============================================
-    #   🤖 👑 Gemini作品タイトル・紹介文提案生成エリア
+    #   🤖 👑 Gemini作品タイトル・紹介文提案生成エリア (更新版)
     # =============================================
     st.markdown("---")
     st.subheader("🤖 Gemini売れ筋アライアンス生成アシスタント")
     
-    # 5つの条件優先度に従って「オススメの10品」を自動でバックグラウンド抽出するロジック
+    # 優先ロジックに従い、商品をランク付けする
     df_recommend = df_filter.copy()
     today_dt = datetime.now()
     one_month_ago_date = (today_dt - timedelta(days=30)).date()
@@ -645,72 +645,75 @@ if st.session_state.raw_data:
     df_recommend["_date1_obj"] = df_recommend["直近販売日1"].apply(get_date_obj)
     df_recommend["_date3_obj"] = df_recommend["直近販売日3"].apply(get_date_obj)
     
-    # 優先条件に沿ってランク（スコア）を付与
+    # ご指定の優先順位を判定するロジック
     def calc_priority_rank(row):
-        # ① 直近販売日３が1ヶ月以内 ＆ 購入者数100人以内
-        if row["_date3_obj"] and row["_date3_obj"] >= one_month_ago_date and row["_buy_num"] <= 100: return 1
-        # ② 直近販売日３が1ヶ月以内 ＆ 購入者数500人以内
-        if row["_date3_obj"] and row["_date3_obj"] >= one_month_ago_date and row["_buy_num"] <= 500: return 2
-        # ③ 直近販売日３が1ヶ月以内 ＆ 購入者数1000人以内
-        if row["_date3_obj"] and row["_date3_obj"] >= one_month_ago_date and row["_buy_num"] <= 1000: return 3
-        # ④ 直近販売日１が1ヶ月以内 ＆ 購入者数1000人以内
-        if row["_date1_obj"] and row["_date1_obj"] >= one_month_ago_date and row["_buy_num"] <= 1000: return 4
-        # ⑤ 直近販売日１が3ヶ月以内 ＆ 購入者数1000人以内
-        if row["_date1_obj"] and row["_date1_obj"] >= three_months_ago_date and row["_buy_num"] <= 1000: return 5
+        d1 = row["_date1_obj"]
+        d3 = row["_date3_obj"]
+        buy = row["_buy_num"]
+        
+        # ① 直近販売日３が1ヶ月以内 ＆ 購入者数500人以内
+        if d3 and d3 >= one_month_ago_date and buy <= 500: return 1
+        # ② 直近販売日３が1ヶ月以内 ＆ 購入者数1000人以内
+        if d3 and d3 >= one_month_ago_date and buy <= 1000: return 2
+        # ③ 直近販売日１が1ヶ月以内 ＆ 購入者数1000人以内
+        if d1 and d1 >= one_month_ago_date and buy <= 1000: return 3
+        # ④ 直近販売日１が3ヶ月以内 ＆ 購入者数1000人以内
+        if d1 and d1 >= three_months_ago_date and buy <= 1000: return 4
+        
         return 99 # 条件外
 
-    df_recommend["優先順位"] = df_recommend.apply(calc_priority_rank, axis=1)
-    df_recommend = df_recommend.sort_values(by=["優先順位", "_buy_num"], ascending=[True, False])
+    df_recommend["優先ランク"] = df_recommend.apply(calc_priority_rank, axis=1)
     
-    # 有効な参考候補のみ（上位10件）を抽出
-    candidate_items = df_recommend[df_recommend["優先順位"] != 99].head(10)
+    # 優先ランク順でソート（ランク1が最優先）
+    # 同ランク内では購入者数が少ない（＝最近のリアルな売れ筋の）順に並べる
+    df_recommend = df_recommend.sort_values(by=["優先ランク", "_buy_num"], ascending=[True, True])
     
-    # もし条件に合うものが上限に達しない場合は、条件外の売れている順で10件まで補填
+    # 条件合致したものを上位10件までピックアップ
+    candidate_items = df_recommend[df_recommend["優先ランク"] != 99].head(10)
+    
+    # もし10件に満たない場合は、条件外から補填
     if len(candidate_items) < 10:
-        fill_count = 10 - len(candidate_items)
-        backup_items = df_recommend[df_recommend["優先順位"] == 99].head(fill_count)
-        candidate_items = pd.concat([candidate_items, backup_items])
+        backup = df_recommend[df_recommend["優先ランク"] == 99].head(10 - len(candidate_items))
+        candidate_items = pd.concat([candidate_items, backup])
 
     if candidate_items.empty:
-        st.warning("⚠️ 現在のデータの中に、AI分析の参考としておすすめできる有効な商品が見つかりませんでした。再取得してください。")
+        st.warning("⚠️ 現在のデータの中に、分析の参考としておすすめできる商品が見つかりませんでした。絞り込み条件を緩めて再取得してください。")
     else:
-        st.markdown("""
-        取得した全競合商品の中から、ご指定の優先ロジックに従い、**「大手すぎず直近で高確率でリアルに売れているお手本ライバル作品」**を10品ピックアップしました。
-        お好きな1品を選んで、あなたの作品情報を入力するだけで、Geminiが瞬時に分析と文章作成を行います。
-        """)
+        st.markdown(f"**自動ピックアップ完了:** 最適な参考商品が {len(candidate_items)} 件見つかりました。")
         
-        # セレクトボックス用に表示名を作成
+        # セレクトボックスの設定
         select_options = []
         option_to_data = {}
         
         for idx, row in candidate_items.iterrows():
-            cond_label = f"【優先条件{row['優先順位']}】" if row['優先順位'] != 99 else "【通常品】"
-            display_name = f"{cond_label} (購入:{row['_buy_num']}人 / 直近3:{row['直近販売日3']}) {row['商品名'][:30]}..."
+            rank_label = f"【優先{row['優先ランク']}】" if row['優先ランク'] != 99 else "【参考】"
+            display_name = f"{rank_label} (購入:{row['_buy_num']}人) {row['商品名'][:30]}..."
             select_options.append(display_name)
             option_to_data[display_name] = row
 
-        # UIコンポーネントの配置
-        gemini_key = st.text_input("🔑 Gemini APIキーを入力してください", value="ここに取得したAIzaSyから始まるキーを貼り付ける", type="password", help="Google AI Studioで取得したAPIキーを入力します。")
-        chosen_option = st.selectbox("🎯 お手本（参考にする売れ筋商品）を選択してください", select_options)
+        gemini_key = st.text_input("🔑 Gemini APIキーを入力してください", type="password", help="Google AI Studioで取得したAPIキーを入力します。")
+        
+        # デフォルトで一番上のものを選択状態にする
+        chosen_option = st.selectbox("🎯 AI分析の参考にする商品（推奨順）", select_options, index=0)
         
         col_input1, col_input2 = st.columns(2)
-        my_stone_input = col_input1.text_input("🔮 あなたの作品に使う天然石（例: ラピスラズリ, アメジスト）", value="ラピスラズリ")
+        my_stone_input = col_input1.text_input("🔮 あなたの作品の天然石", value="ラピスラズリ")
         my_features_input = col_input2.text_area(
-            "🛠️ あなたの作品の特徴・こだわり（例: ワイヤーでシンプルに固定、360度どの角度からも石が見える、つけっぱなし対応、など）",
-            value="「はだかのお守り」シリーズ。\n天然石をシンプルにワイヤーで留めており、360度どの角度からも天然石の美しさを見ることができます。\nその日の気分に合わせて好きな面を指輪の正面にセットして楽しめる、お守りのようなリングです。"
+            "🛠️ 作品の特徴・こだわり",
+            value="「はだかのお守り」シリーズ。天然石をワイヤーでシンプルに留め、360度美しく見せるデザイン。",
+            height=100
         )
         
-        generate_btn = st.button("🚀 売れ筋を分析してタイトル・紹介文を提案してもらう", type="primary")
+        generate_btn = st.button("🚀 売れ筋を分析して提案してもらう", type="primary")
         
         if generate_btn:
             if not gemini_key:
                 st.error("⚠️ Gemini APIキーを入力してください。")
             elif option_to_data[chosen_option]["作品紹介文"] == "取得失敗":
-                st.error("⚠️ 選択された商品の紹介文データが正しくスクレイピングできていません。別の商品を選択し直してください。")
+                st.error("⚠️ この商品の紹介文は取得できませんでした。別の商品を選択してください。")
             else:
                 selected_row = option_to_data[chosen_option]
-                
-                with st.spinner("🧙‍♂️ Geminiが売れ筋ライバル商品を分析し、新しい文章を考えています..."):
+                with st.spinner("🧙‍♂️ AIが売れ筋を分析中..."):
                     ai_result = generate_text_with_gemini(
                         api_key=gemini_key,
                         target_title=selected_row["商品名"],
@@ -718,8 +721,7 @@ if st.session_state.raw_data:
                         my_stone=my_stone_input,
                         my_features=my_features_input
                     )
-                
                 st.markdown('<div class="ai-box">', unsafe_allow_html=True)
-                st.subheader("✨ Geminiからの提案・分析結果レポート")
+                st.subheader("✨ Gemini分析結果")
                 st.markdown(ai_result)
                 st.markdown('</div>', unsafe_allow_html=True)
