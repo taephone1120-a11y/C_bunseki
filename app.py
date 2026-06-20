@@ -26,7 +26,28 @@ st.markdown("""
     h1 { font-size: 28px !important; font-weight: 700 !important; color: #111111 !important; margin: 0 !important; }
     div[data-testid="stSidebarUserContent"] { padding-top: 1rem !important; }
     div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h5 { font-size: 13.5px !important; margin-top: 12px !important; margin-bottom: 5px !important; color: #111111 !important; font-weight: 600 !important; }
-    .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div { padding: 6px 10px !important; min-height: 36px !important; height: 36px !important; font-size: 13.5px !important; }
+    
+    /* 入力フォーム全体のコンパクト化設定 */
+    .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div { 
+        padding: 4px 6px !important; 
+        min-height: 32px !important; 
+        height: 32px !important; 
+        font-size: 13px !important; 
+    }
+    
+    /* 🎯 フィルター枠内の「ー」「＋」ボタンの間隔をキュッと縮めるCSS */
+    div[data-testid="stNumberInput"] button {
+        width: 24px !important;
+        height: 24px !important;
+        min-width: 24px !important;
+        min-height: 24px !important;
+        padding: 0 !important;
+        margin: 2px !important;
+    }
+    div[data-testid="stNumberInput"] div[data-baseline="true"] {
+        padding-left: 4px !important;
+        padding-right: 4px !important;
+    }
     
     /* 判定用スタイル */
     .metric-card {
@@ -535,7 +556,6 @@ if st.session_state.raw_data:
             st.session_state.show_calculator = True
             
         if st.session_state.get("show_calculator", False):
-            # 最小値エラー(100未満)を防止するために安全な数値を算出
             default_market_total = max(1, int(st.session_state.market_total))
             
             total_market_items = st.number_input(
@@ -548,14 +568,11 @@ if st.session_state.raw_data:
             
             # --- 【判定用データ集計】 ---
             total_artists_count = len(st.session_state.raw_data)
-            under_1000_count = 0        # 全一般作家（評価1000以下）の数
-            active_under_1000_count = 0 # 直近1ヶ月以内に動いている一般作家の数
-            
-            # 直近3ヶ月以内に売れている商品の総数
+            under_1000_count = 0        
+            active_under_1000_count = 0 
             total_recent_sales_3months = 0
             
             for item in st.session_state.raw_data:
-                # 総評価数の数値化 (リネーム対策込み)
                 try: r_num = int(re.sub(r"\D", "", str(item["ユーザーの総評価数" if "ユーザーの総評価数" in item else "総評価数"])))
                 except: r_num = 0
                 
@@ -572,30 +589,26 @@ if st.session_state.raw_data:
                             is_s1_active_3months = True
                     except: pass
                 
-                # 直近3ヶ月以内の販売履歴があればカウント
                 if is_s1_active_3months:
                     total_recent_sales_3months += 1
                 
-                # 一般作家（評価1000以下）の集計
                 if r_num <= 1000:
                     under_1000_count += 1
                     if is_s1_active_1month:
                         active_under_1000_count += 1
 
-            # 各種割合の計算（分母0回避）
             ratio_3months_sales = (total_recent_sales_3months / total_artists_count) if total_artists_count > 0 else 0.0
             ratio_active_vs_total = (active_under_1000_count / total_artists_count) if total_artists_count > 0 else 0.0
             ratio_active_vs_general = (active_under_1000_count / under_1000_count) if under_1000_count > 0 else 0.0
 
-            # --- 【ロジック1】お休み市場の判定（3ヶ月以内の販売商品が50%以下） ---
+            # --- 【ロジック1】お休み市場の判定 ---
             if ratio_3months_sales <= 0.50:
                 judge_title = "❄️ お休み市場（需要低迷、または停滞）"
                 judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}%（基準50%以下）しかありません。市場全体の動きが非常に鈍く、需要が一時的に冷え込んでいるか、季節外れの可能性があります。別のキーワードでのリサーチをお勧めします。"
                 color = "#F8D7DA"
                 
-                # 動的スコア計算: 0%なら0点、50%なら30点
                 final_score = int((ratio_3months_sales / 0.50) * 30)
-                final_score = min(max(final_score, 0), 30) # 安全のための上下限ガード
+                final_score = min(max(final_score, 0), 30)
 
             # --- 【ロジック2】大手が強すぎる市場（レッドオーシャン）の判定 ---
             elif (ratio_active_vs_total <= 0.15) or (ratio_active_vs_general <= 0.30):
@@ -603,19 +616,17 @@ if st.session_state.raw_data:
                 judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを大手が独占しており、一般作家が普通に参入しても埋もれやすい過密市場です。差別化戦略が必須となります。"
                 color = "#FFF3CD"
                 
-                # 動的スコア計算: 基準に対する「達成率」が低い（より深刻）方をベースに30〜50点に割り振る
                 achievement_vs_total = ratio_active_vs_total / 0.15
                 achievement_vs_general = ratio_active_vs_general / 0.30
                 worst_achievement = min(achievement_vs_total, achievement_vs_general)
                 
                 final_score = 30 + int(worst_achievement * 20)
-                final_score = min(max(final_score, 30), 50) # 安全のための上下限ガード
+                final_score = min(max(final_score, 30), 50)
 
             # --- 【ロジック3】狙い目・激アツの計算 ---
             else:
                 survival_rate = ratio_active_vs_general
                 
-                # 検索結果の全体件数に応じた難易度ボーナス/ペナルティ
                 if total_market_items <= 500:
                     market_bonus = 35  
                 elif total_market_items <= 3000:
@@ -626,7 +637,6 @@ if st.session_state.raw_data:
                     market_bonus = -int(np.log10(total_market_items / 20000) * 12)
                     market_bonus = max(market_bonus, -25)
 
-                # スコア計算 (下限を51点に変更し、レッドオーシャンと被らないように調整)
                 raw_score = (survival_rate * 60) + 30 + market_bonus
                 final_score = min(max(int(raw_score), 51), 100) 
                 
