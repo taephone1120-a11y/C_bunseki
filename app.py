@@ -555,7 +555,7 @@ if st.session_state.raw_data:
     )
 
     # =============================================
-    #   📊 売れやすさ計算 (★詳しく表示する詳細版に復活)
+    #   📊 売れやすさ計算 (詳細版)
     # =============================================
     total_raw_count = len(st.session_state.raw_data)
     st.markdown("---")
@@ -576,7 +576,7 @@ if st.session_state.raw_data:
             under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0, 0
             
             for item in st.session_state.raw_data:
-                try: r_num = int(re.sub(r"\D", "", str(item["ユーザーの総評価数" if "ユーザーの総評価数" in item else "総評価数"])))
+                try: r_num = int(re.sub(r"\D", "", str(item["総評価数"])))
                 except: r_num = 0
                 
                 s1_str = item["直近販売日1"]
@@ -615,7 +615,6 @@ if st.session_state.raw_data:
                     judge_title, color = "✨ 狙い目（十分にチャンスあり）", "#CCE5FF"
                     judge_desc = f"適度に市場が回転しており、一般作家でも十分に売上を立てられる健全な市場です。独自のタイトルワークや見せ方で攻めることで、さらに高い確率でファンを掴めます。"
 
-            # 詳しい算出内訳を表示するHTML枠
             st.markdown(f"""
                 <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
                     <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
@@ -639,6 +638,7 @@ if st.session_state.raw_data:
     st.markdown("---")
     st.subheader("🤖 Gemini売れ筋アライアンス生成アシスタント")
     
+    # 名称変更対応：final_dfではなく、内部処理用のdf_filterを元にAI用おすすめリストを構築する
     df_recommend = df_filter.copy()
     today_dt = datetime.now()
     one_month_ago_date = (today_dt - timedelta(days=30)).date()
