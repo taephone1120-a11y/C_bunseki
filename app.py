@@ -645,7 +645,6 @@ if st.session_state.raw_data:
 """
             
             # デザイン枠（ai-box）の中に、完成したプロンプトを表示
-            st.markdown('<div class="ai-box">', unsafe_allow_html=True)
             st.subheader("📋 AI用コピーテキストの作成完了")
             st.success("✨ 下の枠内のテキストをすべてコピーして、ChatGPTやGeminiのチャット欄に貼り付けてください。")
             
