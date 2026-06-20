@@ -446,15 +446,17 @@ if st.session_state.raw_data:
     if filter_rev_min is not None: query_df = query_df[query_df["_rev_num"] >= filter_rev_min]
     if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
     
-    # 🎯 修正点: 初期条件判定の最優先枠化
+    # 🎯 修正点：いかなるエラー時も初期状態チェックを最優先に通過させる
     def check_sales3_date_range(date_str):
-        # フィルターがデフォルト状態（開始2020.1.1、終了None）なら無条件で100%全通し
+        # 1. フィルターが初期値のときは、文字だろうがエラーだろうが「絶対に100%全通し」
         if filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None:
             return True
             
+        # 2. ユーザーが日付を変更しているのに、データがハイフンや文字なら除外
         if date_str in ["-", "3ヶ月以上前", "取得失敗"]:
             return False
             
+        # 3. 日付範囲の通常判定
         try:
             target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
             lower_ok = (filter_sales3_min is None or target_dt >= filter_sales3_min)
