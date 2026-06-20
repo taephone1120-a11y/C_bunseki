@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 #   デザインとヘッダー設定
 # =============================================
-st.set_page_config(page_title="Creema市場リサーチツール (高速版)", page_icon="💎", layout="wide")
+st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
 st.markdown("""
     <style>
@@ -26,23 +26,10 @@ st.markdown("""
     div[data-testid="stSidebarUserContent"] { padding-top: 1rem !important; }
     div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h5 { font-size: 13.5px !important; margin-top: 12px !important; margin-bottom: 5px !important; color: #111111 !important; font-weight: 600 !important; }
     .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div { padding: 6px 10px !important; min-height: 36px !important; height: 36px !important; font-size: 13.5px !important; }
-    /* デバッグログ用スタイリング */
-    .log-box {
-        background-color: #f0f2f6;
-        border-radius: 5px;
-        padding: 10px;
-        font-family: monospace;
-        font-size: 12px;
-        height: 250px;
-        overflow-y: scroll;
-        white-space: pre-wrap;
-        border: 1px solid #dcdcdc;
-        color: #333333;
-    }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("💎 Creema市場リサーチツール (ハイスピード安定版)")
+st.title("💎 Creema市場リサーチツール")
 st.markdown('<hr style="border: none; border-top: 1px solid #e6e6e6; margin-top: 15px; margin-bottom: 25px; padding: 0;">', unsafe_allow_html=True)
 
 # =============================================
@@ -65,21 +52,6 @@ max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # =============================================
-#   安全なログ管理クラス
-# =============================================
-class RealTimeLogger:
-    def __init__(self):
-        self.placeholder = st.empty()
-        self.logs = []
-
-    def log(self, message):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        log_entry = f"[{timestamp}] {message}"
-        self.logs.append(log_entry)
-        log_html = f'<div class="log-box">{"<br>".join(self.logs)}</div>'
-        self.placeholder.markdown(log_html, unsafe_allow_html=True)
-
-# =============================================
 #   📲 LINE通知関数
 # =============================================
 def send_line_notification(keyword_or_url, item_count):
@@ -92,9 +64,9 @@ def send_line_notification(keyword_or_url, item_count):
     except: pass
 
 # =============================================
-#   🎯 特定商品の全販売日を取得（高速化調整版）
+#   🎯 特定商品の全販売日を取得
 # =============================================
-def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago, task_logs, item_no):
+def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago):
     all_matched_dates = []
     current_page = 1
     current_url = base_rating_url
@@ -103,9 +75,6 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
     while current_url and current_page <= max_pages_to_search:
         try:
             res = requests.get(current_url, headers=headers, timeout=8)
-            if res.status_code == 403:
-                task_logs.append(f"⚠️ [商品{item_no}] 評価P{current_page}でアクセス拒否(403)。速度を落とすサインです。")
-                break
             if res.status_code != 200:
                 break
             
@@ -138,13 +107,9 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             else:
                 current_url = f"{base_rating_url}?page={current_page}"
                 
-            time.sleep(0.4)  # ⚡ 待機時間を0.6sから0.4sへ微短縮してテンポ向上
+            time.sleep(0.4)  
             
-        except requests.exceptions.Timeout:
-            task_logs.append(f"⏳ [商品{item_no}] 評価P{current_page}で通信タイムアウト。スキップ。")
-            break
-        except Exception as e:
-            task_logs.append(f"❌ [商品{item_no}] 評価P{current_page}でエラー: {str(e)}")
+        except:
             break
             
     all_matched_dates.sort(reverse=True)
@@ -153,15 +118,12 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
 # =============================================
 #   単一商品を解析するコアロジック
 # =============================================
-def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, item_no):
-    task_logs = []
+def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
     try:
         link = item_data["link"]
         creator = item_data["creator"]
         title = item_data["title"]
         price = item_data["price"]
-
-        task_logs.append(f"🔄 [商品{item_no}] 解析開始: {title[:15]}...")
 
         purchase_count = "パス"
         favorite = "取得失敗"
@@ -200,8 +162,7 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, item_
                     required_sales_count = min(p_num, 3) if p_num > 0 else 0
                 
                 if required_sales_count > 0:
-                    task_logs.append(f"  🔍 [商品{item_no}] 直近販売日を検索（目標: {required_sales_count}件）")
-                    sorted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago, task_logs, item_no)
+                    sorted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago)
                     
                     for idx in range(required_sales_count):
                         if idx < len(sorted_dates):
@@ -252,22 +213,20 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, item_
                                 if oldest_date is None or current_date < oldest_date: oldest_date = current_date
                     if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
 
-        task_logs.append(f"✅ [商品{item_no}] 完了")
         result_data = {
             "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
             "お気に入り数": favorite, "購入者数": purchase_count, "総評価数": review,
             "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
             "直近販売日1": recent_sales[0], "直近販売日2": recent_sales[1], "直近販売日3": recent_sales[2],
         }
-        return result_data, task_logs
-    except Exception as e:
-        task_logs.append(f"❌ [商品{item_no}] エラーでスキップ: {str(e)}")
-        return None, task_logs
+        return result_data
+    except:
+        return None
 
 # =============================================
 #   メインのスクレイピング制御
 # =============================================
-def scrape_creema_fast(start_url, max_num, logger):
+def scrape_creema_fast(start_url, max_num):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
@@ -280,16 +239,12 @@ def scrape_creema_fast(start_url, max_num, logger):
     current_url = start_url
     page_count = 1
     
-    logger.log("====== 🕵️ 一覧ページの巡回を開始します ======")
     page_status = st.empty()
     
     while current_url and len(all_item_elements_data) < max_num:
         page_status.info(f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています (収集済リンク: {len(all_item_elements_data)}件)")
         try:
             response = requests.get(current_url, headers=headers, timeout=10)
-            if response.status_code == 403:
-                logger.log("❌ 一覧ページでアクセス拒否(403)されました。")
-                break
             if response.status_code != 200: break
             soup = BeautifulSoup(response.content, "html.parser")
             
@@ -317,36 +272,29 @@ def scrape_creema_fast(start_url, max_num, logger):
             if next_tag and "href" in next_tag.attrs:
                 current_url = next_tag["href"] if next_tag["href"].startswith("http") else "https://www.creema.jp" + next_tag["href"]
                 page_count += 1
-                time.sleep(1.0) # 一覧ページの遷移を1.2sから1.0sへ調整
+                time.sleep(1.0)
             else:
                 current_url = None
-        except Exception as e:
-            logger.log(f"❌ 一覧ページ巡回中にエラー: {str(e)}")
+        except:
             break
             
     page_status.empty()
     total_found = len(all_item_elements_data)
     
     if total_found == 0:
-        logger.log("❌ 有効な商品が1件も見つかりませんでした。")
         return None
         
-    logger.log(f"====== 📊 詳細解析スタート (合計: {total_found}件) ======")
     status_text = st.empty()
     progress_bar = st.progress(0)
     
     scraped_data = []
     
-    # 🚀 限界突破：並行数を「3」から「5」に引き上げてリクエストを最大化
+    # 高速モード（並行数5）
     with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago, i+1): i for i, item_data in enumerate(all_item_elements_data)}
+        future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): i for i, item_data in enumerate(all_item_elements_data)}
         
         for current_idx, future in enumerate(as_completed(future_to_item), 1):
-            result, task_logs = future.result()
-            
-            for msg in task_logs:
-                logger.log(msg)
-                
+            result = future.result()
             if result: 
                 scraped_data.append(result)
                 
@@ -355,7 +303,6 @@ def scrape_creema_fast(start_url, max_num, logger):
             
     progress_bar.empty()
     status_text.empty()
-    logger.log("====== 🎉 全ての解析工程が完了しました！ ======")
     
     if scraped_data:
         for i, item in enumerate(scraped_data, 1): item["No."] = i
@@ -403,13 +350,10 @@ if start_button:
     if mode == "一覧URL直貼り" and not target_url:
         st.error("⚠️ URLを入力してください。")
     else:
-        st.subheader("📋 リアルタイム解析ログ（不具合監視用）")
-        logger = RealTimeLogger()
-        
         cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
         send_line_notification(cond_text, max_items)
         
-        data = scrape_creema_fast(target_url, max_items, logger)
+        data = scrape_creema_fast(target_url, max_items)
         if data:
             st.session_state.raw_data = data
             st.toast("🎉 取得完了しました！", icon="✅")
