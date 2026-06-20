@@ -393,7 +393,8 @@ def convert_df_to_excel(df):
 #   📞 Gemini API 呼び出し関数 (一括分析・改善版)
 # =============================================
 def generate_text_with_gemini_batch(api_key, candidate_items, my_stone, my_features):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # モデル名を最新の2.0（または安定版の1.5の正式指定）に変更します
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     
     # 候補商品の情報をリストアップ
