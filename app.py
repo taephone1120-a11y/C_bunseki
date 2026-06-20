@@ -77,7 +77,7 @@ st.markdown("""
 # 💎 タイトルを表示
 st.title("💎 Creema市場リサーチツール")
 
-# 📍 【余白調整】marginの数値を変更して、線の下側（結果表示との間）に適切なスペースを空けました
+# 📍 区切り線と適切なスペース
 st.markdown('<hr style="border: none; border-top: 1px solid #e6e6e6; margin-top: 15px; margin-bottom: 25px; padding: 0;">', unsafe_allow_html=True)
 
 # =============================================
@@ -133,24 +133,24 @@ def send_line_notification(keyword_or_url, item_count):
 
 
 # =============================================
-#   🎯 特定商品の直近3件の売れた日付を追跡する関数
+#   🎯 修正：特定商品の全販売日を取得し、時系列で直近3件を返す関数
 # =============================================
 def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago):
     """
-    評価一覧をページ送りしながら、該当商品名の入った評価（購入者側の評価日）を最大required_count件抽出する
+    評価一覧ページを巡回し、該当商品のレビュー日付をすべて集め、
+    「最新の時系列順」にソートした上で直近の必要件数分を返します。
     """
-    sales_dates = []
+    all_matched_dates = []
     current_page = 1
     current_url = base_rating_url
 
-    while current_url and len(sales_dates) < required_count:
+    while current_url:
         try:
             res = requests.get(current_url, headers=headers, timeout=10)
             if res.status_code != 200:
                 break
             
             soup = BeautifulSoup(res.content, "html.parser")
-            # 評価ごとのブロックを取得
             blocks = soup.select(".p-creator-rating-rating__content")
             if not blocks:
                 break
@@ -158,13 +158,8 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             page_has_valid_date = False
             
             for block in blocks:
-                if len(sales_dates) >= required_count:
-                    break
-                
-                # ブロック内の商品名タイトル部分を確認
                 title_tag = block.select_one(".p-creator-rating-rating__title a")
                 if title_tag and title_tag.text.strip() == target_title:
-                    # 購入者の評価（声）部分の日付を取得
                     voice_date_tag = block.select_one(".p-creator-rating-rating__voice .p-creator-rating-rating__date")
                     if voice_date_tag:
                         date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", voice_date_tag.text)
@@ -172,32 +167,32 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                             date_str = date_match.group(1)
                             review_date = datetime.strptime(date_str, "%Y.%m.%d")
                             
-                            # 3ヶ月前より新しいか判定
+                            # 3ヶ月以内（90日以内）の日付のみを対象に一旦全回収
                             if review_date >= three_months_ago:
-                                sales_dates.append(date_str)
+                                all_matched_dates.append(review_date)
                                 page_has_valid_date = True
-                            else:
-                                # 評価は新しい順に並んでいるため、3ヶ月前の日付が出た時点でこれ以上古いのは追跡不要
-                                return sales_dates
             
-            # もしこのページに3ヶ月以内のデータが1つもなく、かつブロックが存在していた場合は、これ以上古いページをめくっても無駄なため終了
+            # このページに3ヶ月以内の該当商品が1つもなく、かつ1ページ目より先であれば、これ以上古いページを探すのをストップ
             if not page_has_valid_date and current_page > 1:
-                # 1ページ目はたまたま該当商品がないだけの可能性があるので2ページ目以降で判定
-                pass
+                break
 
-            # 次のページURLを作成
+            # 次のページURLを作成してループを続行
             current_page += 1
             if "?" in base_rating_url:
                 current_url = f"{base_rating_url}&page={current_page}"
             else:
                 current_url = f"{base_rating_url}?page={current_page}"
                 
-            time.sleep(0.5)
+            time.sleep(0.4)
             
         except Exception:
             break
             
-    return sales_dates
+    # ⏱️ 集まった日付オブジェクトを「新しい順（降順）」に並び替える（これで左右の配置ズレが100%解消されます）
+    all_matched_dates.sort(reverse=True)
+    
+    # 文字列のリスト（YYYY.MM.DD）に直して返す
+    return [d.strftime("%Y.%m.%d") for d in all_matched_dates]
 
 
 # =============================================
@@ -243,9 +238,8 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
                 base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                 
                 # ---------------------------------------------
-                # 🎯 追記：直近3点の日付ピックアップ処理
+                # 🎯 改善：全回収した日付から必要数を取得
                 # ---------------------------------------------
-                # 購入者数数値の割り出し
                 buy_num_match = re.search(r"(\d+)", purchase_count)
                 if buy_num_match:
                     p_num = int(buy_num_match.group(1))
@@ -261,12 +255,13 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
                     required_sales_count = 0
                 
                 if required_sales_count > 0:
-                    extracted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago)
+                    # ページ内の該当商品日付を全回収してソートされたリストを受け取る
+                    sorted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago)
                     
-                    # 取得できた日付を格納。足りない枠には「3ヶ月以上前」を補填
+                    # 取得できた純粋な時系列順にセット。枠に満たない分は「3ヶ月以上前」を代入
                     for idx in range(required_sales_count):
-                        if idx < len(extracted_dates):
-                            recent_sales[idx] = extracted_dates[idx]
+                        if idx < len(sorted_dates):
+                            recent_sales[idx] = sorted_dates[idx]
                         else:
                             recent_sales[idx] = "3ヶ月以上前"
                 
@@ -354,7 +349,7 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
 # =============================================
 def scrape_creema_fast(start_url, max_num):
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
     }
     today = datetime.now()
@@ -533,10 +528,10 @@ if st.session_state.raw_data:
     df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     df_filter["_recent_num"] = pd.to_numeric(df_filter["直近1ヶ月の評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     
-    max_price_val = int(df_filter["_price_num"].max())
-    max_fav_val = int(df_filter["_fav_num"].max())
-    max_buy_val = int(df_filter["_buy_num"].max())
-    max_rev_val = int(df_filter["_rev_num"].max())
+    max_price_val = int(df_filter["_price_num"].max()) if not df_filter.empty else 0
+    max_fav_val = int(df_filter["_fav_num"].max()) if not df_filter.empty else 0
+    max_buy_val = int(df_filter["_buy_num"].max()) if not df_filter.empty else 0
+    max_rev_val = int(df_filter["_rev_num"].max()) if not df_filter.empty else 0
 
     # =============================================
     #   サイドバー：データ絞り込みフィルター
