@@ -94,7 +94,7 @@ search_keyword = ""
 target_url = ""
 
 if mode == "キーワード検索":
-    search_keyword = st.sidebar.text_input("🔍 検索キーワードを入力", value="")
+    search_keyword = st.sidebar.text_input("🔍 検索キーワードを入力", value="天然石 リング")
     encoded_keyword = quote(search_keyword)
     target_url = f"https://www.creema.jp/listing?q={encoded_keyword}&active=pc_listing-form"
 else:
@@ -119,6 +119,8 @@ def send_line_notification(keyword_or_url, item_count):
     
     message_text = (
         f"💎 【Creemaツール】利用通知\n\n"
+        f"今、誰かがリサーチを開始したよ！\n"
+        f"---------------------\n"
         f"▼ 検索内容:\n{keyword_or_url}\n\n"
         f"▼ 解析上限: {item_count} 件"
     )
@@ -434,38 +436,38 @@ if st.session_state.raw_data:
     st.sidebar.markdown("##### 🪙 金額(円)")
     col_price1, col_price_mid, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     with col_price1:
-        filter_price_min = st.number_input("🪙 金額　最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
+        filter_price_min = st.number_input("🪙 金額 最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
     with col_price_mid:
         st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_price2:
-        filter_price_max = st.number_input("🪙 金額　最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
+        filter_price_max = st.number_input("🪙 金額 最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
     
     st.sidebar.markdown("##### ⭐ お気に入り数")
     col_fav1, col_fav_mid, col_fav2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     with col_fav1:
-        filter_fav_min = st.number_input("⭐ お気に入り数　最小", min_value=0, max_value=max_fav_val, value=0, key="fav_min", label_visibility="collapsed")
+        filter_fav_min = st.number_input("⭐ お気に入り数 最小", min_value=0, max_value=max_fav_val, value=0, key="fav_min", label_visibility="collapsed")
     with col_fav_mid:
         st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_fav2:
-        filter_fav_max = st.number_input("⭐ お気に入り数　最大", min_value=0, max_value=max_fav_val, value=max_fav_val, key="fav_max", label_visibility="collapsed")
+        filter_fav_max = st.number_input("⭐ お気に入り数 最大", min_value=0, max_value=max_fav_val, value=max_fav_val, key="fav_max", label_visibility="collapsed")
         
     st.sidebar.markdown("##### 🛒 購入者数")
     col_buy1, col_buy_mid, col_buy2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     with col_buy1:
-        filter_buy_min = st.number_input("🛒 購入者数　最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
+        filter_buy_min = st.number_input("🛒 購入者数 最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
     with col_buy_mid:
         st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_buy2:
-        filter_buy_max = st.number_input("🛒 購入者数　最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
+        filter_buy_max = st.number_input("🛒 購入者数 最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
         
     st.sidebar.markdown("##### 💬 総評価数")
     col_rev1, col_rev_mid, col_rev2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     with col_rev1:
-        filter_rev_min = st.number_input("💬 総評価数　最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
+        filter_rev_min = st.number_input("💬 総評価数 最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
     with col_rev_mid:
         st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_rev2:
-        filter_rev_max = st.number_input("💬 総評価数　最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
+        filter_rev_max = st.number_input("💬 総評価数 最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
     
     st.sidebar.markdown("##### 📅 直近1ヶ月の評価数")
     filter_recent = st.sidebar.selectbox(
@@ -477,11 +479,11 @@ if st.session_state.raw_data:
     st.sidebar.markdown("##### ⏱️ 一番初めの評価日")
     col_date1, col_date_mid, col_date2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     with col_date1:
-        filter_date_min = st.date_input("⏱️ 一番初めの評価日　開始日", value=datetime(2010, 1, 1).date(), max_value=datetime.now().date(), key="date_min", label_visibility="collapsed")
+        filter_date_min = st.date_input("⏱️ 一番初めの評価日 開始日", value=datetime(2010, 1, 1).date(), max_value=datetime.now().date(), key="date_min", label_visibility="collapsed")
     with col_date_mid:
         st.markdown("<div style='text-align: center; line-height: 36px; font-size: 13px;'>〜</div>", unsafe_allow_html=True)
     with col_date2:
-        filter_date_max = st.date_input("⏱️ 一番初めの評価日　終了日", value=datetime.now().date(), max_value=datetime.now().date(), key="date_max", label_visibility="collapsed")
+        filter_date_max = st.date_input("⏱️ 一番初めの評価日 終了日", value=datetime.now().date(), max_value=datetime.now().date(), key="date_max", label_visibility="collapsed")
 
     # =============================================
     #   フィルター条件の適用
