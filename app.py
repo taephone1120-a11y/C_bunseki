@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
+import re
 
 # =============================================
 #  デザインとヘッダー設定
@@ -714,13 +715,18 @@ if generate_desc_btn:
         
         # 裏で市場10選の「作品紹介文」をピックアップしてテキスト化
         # ※データフレームに '作品紹介文' や '商品説明' という列がある想定です。列名に合わせて `row['作品紹介文']` の部分を変更してください。
+        # 裏で市場10選の「作品紹介文」をピックアップしてテキスト化
         descriptions_summary = ""
         for i, row in candidate_items.iterrows():
-            # 万が一紹介文データが空だった場合の対策
+            # データフレームから紹介文を取得
             desc_text = row.get('作品紹介文', row.get('商品説明', '（紹介文データなし）'))
-            # 長すぎる場合は先頭200文字程度にカットしてプロンプトの肥大化を防ぐ
-            desc_snippet = str(desc_text)[:200].replace('\n', ' ')
-            descriptions_summary += f"■人気商品{i+1}: {row['商品名']}\n【紹介文抜粋】: {desc_snippet}...\n\n"
+            
+            # 【修正ポイント】
+            # .replace('\n', ' ') を削除して改行をそのまま残し、
+            # [:200] の文字数制限をなくして（あるいは1000文字など長めにして）丸ごとプロンプトに流します
+            desc_snippet = str(desc_text)
+            
+            descriptions_summary += f"■人気商品{i+1}: {row['商品名']}\n【紹介文】:\n{desc_snippet}\n\n"
             
         # ChatGPTやGeminiにそのまま貼り付けられる完成形プロンプトを組み立て
         final_desc_prompt = f"""あなたはハンドメイドマーケット（Creemaやminne）で月商100万円以上を売り上げるトップクリエイターであり、お客様の心を動かすWEBライティングの専門家です。
