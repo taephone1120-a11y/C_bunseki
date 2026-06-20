@@ -58,7 +58,6 @@ if mode == "キーワード検索":
 else:
     target_url = st.sidebar.text_input("🔗 Creemaの一覧URLを入力", value="")
 
-# 🎯 ユーザーが指定する目標件数
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=100, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
@@ -118,7 +117,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             else:
                 current_url = f"{base_rating_url}?page={current_page}"
                 
-            time.sleep(0.4)  
+            time.sleep(0.1)  # 🏎️ 爆速化のためウェイトを短縮
             
         except:
             break
@@ -181,7 +180,6 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
                         else:
                             recent_sales[idx] = "3ヶ月以上前"
                 
-                # 直近1ヶ月の評価数解析
                 rating_res = requests.get(base_rating_url, headers=headers, timeout=8)
                 if rating_res.status_code == 200:
                     rating_soup = BeautifulSoup(rating_res.content, "html.parser")
@@ -306,7 +304,7 @@ def scrape_creema_fast(start_url, max_num):
             if next_tag and "href" in next_tag.attrs:
                 current_url = next_tag["href"] if next_tag["href"].startswith("http") else "https://www.creema.jp" + next_tag["href"]
                 page_count += 1
-                time.sleep(1.0)
+                time.sleep(0.5) # 🏎️ ページ遷移ウェイト半減
             else:
                 current_url = None
         except:
@@ -323,7 +321,8 @@ def scrape_creema_fast(start_url, max_num):
     
     scraped_data = []
     
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    # 🏎️ 変更点1: max_workersを5から「15」へ増やし、並列処理をトリプル爆速化
+    with ThreadPoolExecutor(max_workers=15) as executor:
         future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): i for i, item_data in enumerate(all_item_elements_data)}
         
         for current_idx, future in enumerate(as_completed(future_to_item), 1):
@@ -390,7 +389,6 @@ if start_button:
         cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
         send_line_notification(cond_text, max_items)
         
-        # 目標設定件数をセッションに記憶
         st.session_state.target_max_items = max_items
         
         res_dict = scrape_creema_fast(target_url, max_items)
@@ -411,7 +409,6 @@ if st.session_state.raw_data:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
     
-    # 🎯 変更点1: 初期値は最低値(0)または空欄(None)にしてすべてを表示
     # 1. 金額(円)
     st.sidebar.markdown("##### 🪙 金額(円)")
     col_price1, _, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
@@ -440,7 +437,7 @@ if st.session_state.raw_data:
     st.sidebar.markdown("##### 📅 直近1ヶ月の総評価数")
     filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の総評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
 
-    # 空欄(None)に対応した安全なフィルタリング
+    # 安全な数値フィルタリング
     query_df = df_filter.copy()
     if filter_price_min is not None: query_df = query_df[query_df["_price_num"] >= filter_price_min]
     if filter_price_max is not None: query_df = query_df[query_df["_price_num"] <= filter_price_max]
@@ -451,20 +448,21 @@ if st.session_state.raw_data:
     if filter_rev_min is not None: query_df = query_df[query_df["_rev_num"] >= filter_rev_min]
     if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
     
-    # 直近販売日3の日付範囲判定ロジック
+    # 🎯 変更点2: 「直近販売日3」の日付範囲判定ロジックを修正
+    # 初期状態（開始が2020.1.1、終了が空）であれば、「-」や「3ヶ月以上前」の商品も絶対に排除しない
     def check_sales3_date_range(date_str):
-        if date_str in ["-", "3ヶ月以上前"]:
-            # フィルター上限・下限が設定されていない、または広い範囲なら全通しするための初期判定
-            if filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None:
-                return True
-            return False
+        is_default_filter = (filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None)
+        
+        if date_str in ["-", "3ヶ月以上前", "取得失敗"]:
+            return True if is_default_filter else False
+            
         try:
             target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
             lower_ok = (filter_sales3_min is None or target_dt >= filter_sales3_min)
             upper_ok = (filter_sales3_max is None or target_dt <= filter_sales3_max)
             return lower_ok and upper_ok
         except:
-            return False
+            return True if is_default_filter else False
             
     query_df = query_df[query_df["直近販売日3"].apply(check_sales3_date_range)]
     
@@ -513,7 +511,7 @@ if st.session_state.raw_data:
     )
 
     # =============================================
-    #   📊 売れやすさ計算（100件「指定」で利用可能に緩和）
+    #   📊 売れやすさ計算
     # =============================================
     total_raw_count = len(st.session_state.raw_data)
     target_setting = st.session_state.target_max_items
@@ -521,7 +519,6 @@ if st.session_state.raw_data:
     st.markdown("---")
     st.subheader("📊 独立マーケット分析（売れやすさ計算）")
     
-    # 🎯 変更点2: 実際の取得数ではなく、設定値が100件以上ならボタンを出せるように変更
     if target_setting < 100:
         st.warning(f"⚠️ この機能はサイドバーの「取得する商品件数」を100件以上に指定してリサーチした際にご利用いただけます。（現在の指定: {target_setting}件）")
     else:
