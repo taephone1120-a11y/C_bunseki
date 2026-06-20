@@ -592,14 +592,24 @@ if st.session_state.raw_data:
                 judge_title = "❄️ お休み市場（需要低迷、または停滞）"
                 judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}%（基準50%以下）しかありません。市場全体の動きが非常に鈍く、需要が一時的に冷え込んでいるか、季節外れの可能性があります。別のキーワードでのリサーチをお勧めします。"
                 color = "#F8D7DA"
-                final_score = 15
+                
+                # 動的スコア計算: 0%なら0点、50%なら30点
+                final_score = int((ratio_3months_sales / 0.50) * 30)
+                final_score = min(max(final_score, 0), 30) # 安全のための上下限ガード
 
             # --- 【ロジック2】大手が強すぎる市場（レッドオーシャン）の判定 ---
             elif (ratio_active_vs_total <= 0.15) or (ratio_active_vs_general <= 0.30):
                 judge_title = "⚖️ レッドオーシャン（大手が強すぎる市場）"
-                judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを大手が独占しており、一般作家が普通に参入しても埋もれやすい過密市場です。コンセプトの差別化や独自化が必須となります。"
+                judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを大手が独占しており、一般作家が普通に参入しても埋もれやすい過密市場です。差別化戦略が必須となります。"
                 color = "#FFF3CD"
-                final_score = 35
+                
+                # 動的スコア計算: 基準に対する「達成率」が低い（より深刻）方をベースに30〜50点に割り振る
+                achievement_vs_total = ratio_active_vs_total / 0.15
+                achievement_vs_general = ratio_active_vs_general / 0.30
+                worst_achievement = min(achievement_vs_total, achievement_vs_general)
+                
+                final_score = 30 + int(worst_achievement * 20)
+                final_score = min(max(final_score, 30), 50) # 安全のための上下限ガード
 
             # --- 【ロジック3】狙い目・激アツの計算 ---
             else:
@@ -616,11 +626,11 @@ if st.session_state.raw_data:
                     market_bonus = -int(np.log10(total_market_items / 20000) * 12)
                     market_bonus = max(market_bonus, -25)
 
-                # スコア計算
-                raw_score = (survival_rate * 70) + 20 + market_bonus
-                final_score = min(max(int(raw_score), 40), 100) 
+                # スコア計算 (下限を51点に変更し、レッドオーシャンと被らないように調整)
+                raw_score = (survival_rate * 60) + 30 + market_bonus
+                final_score = min(max(int(raw_score), 51), 100) 
                 
-                if final_score >= 70:
+                if final_score >= 75:
                     judge_title = "🔥 激アツ（超おすすめ市場）"
                     judge_desc = f"全体の競合件数（{total_market_items:,}件）が適正、かつ一般作家の生存率が非常に高い『理想的なお宝市場』です。大手に需要を吸い尽くされておらず、新しく商品を出しても上位表示や即売れを狙えるチャンスが極めて高い状態です。"
                     color = "#D4EDDA"
