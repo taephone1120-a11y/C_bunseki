@@ -58,6 +58,7 @@ if mode == "キーワード検索":
 else:
     target_url = st.sidebar.text_input("🔗 Creemaの一覧URLを入力", value="")
 
+# 🎯 ユーザーが指定する目標件数
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=100, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
@@ -379,6 +380,8 @@ if "raw_data" not in st.session_state:
     st.session_state.raw_data = None
 if "market_total" not in st.session_state:
     st.session_state.market_total = 170000
+if "target_max_items" not in st.session_state:
+    st.session_state.target_max_items = 100
 
 if start_button:
     if mode == "一覧URL直貼り" and not target_url:
@@ -386,6 +389,9 @@ if start_button:
     else:
         cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
         send_line_notification(cond_text, max_items)
+        
+        # 目標設定件数をセッションに記憶
+        st.session_state.target_max_items = max_items
         
         res_dict = scrape_creema_fast(target_url, max_items)
         if res_dict:
@@ -401,56 +407,62 @@ if st.session_state.raw_data:
     df_filter["_buy_num"] = pd.to_numeric(df_filter["購入者数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     df_filter["_recent_num"] = pd.to_numeric(df_filter["直近1ヶ月の評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
-    
-    max_price_val = int(df_filter["_price_num"].max()) if not df_filter.empty else 0
-    max_buy_val = int(df_filter["_buy_num"].max()) if not df_filter.empty else 0
-    max_rev_val = int(df_filter["_rev_num"].max()) if not df_filter.empty else 0
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
     
+    # 🎯 変更点1: 初期値は最低値(0)または空欄(None)にしてすべてを表示
     # 1. 金額(円)
     st.sidebar.markdown("##### 🪙 金額(円)")
     col_price1, _, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    filter_price_min = col_price1.number_input("🪙 最小", min_value=0, max_value=max_price_val, value=0, key="price_min", label_visibility="collapsed")
-    filter_price_max = col_price2.number_input("🪙 最大", min_value=0, max_value=max_price_val, value=max_price_val, key="price_max", label_visibility="collapsed")
+    filter_price_min = col_price1.number_input("🪙 最小", min_value=0, value=0, key="price_min", label_visibility="collapsed")
+    filter_price_max = col_price2.number_input("🪙 最大", min_value=0, value=None, key="price_max", label_visibility="collapsed")
         
     # 2. 購入者数
     st.sidebar.markdown("##### 🛒 購入者数")
     col_buy1, _, col_buy2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    filter_buy_min = col_buy1.number_input("🛒 最小", min_value=0, max_value=max_buy_val, value=0, key="buy_min", label_visibility="collapsed")
-    filter_buy_max = col_buy2.number_input("🛒 最大", min_value=0, max_value=max_buy_val, value=max_buy_val, key="buy_max", label_visibility="collapsed")
+    filter_buy_min = col_buy1.number_input("🛒 最小", min_value=0, value=0, key="buy_min", label_visibility="collapsed")
+    filter_buy_max = col_buy2.number_input("🛒 最大", min_value=0, value=None, key="buy_max", label_visibility="collapsed")
     
     # 3. 直近販売日３ (日付範囲指定)
     st.sidebar.markdown("##### 📅 直近販売日３")
     col_sales3_1, _, col_sales3_2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
     filter_sales3_min = col_sales3_1.date_input("📅 開始", value=datetime(2020, 1, 1).date(), max_value=datetime.now().date(), key="sales3_min", label_visibility="collapsed")
-    filter_sales3_max = col_sales3_2.date_input("📅 終了", value=datetime.now().date(), max_value=datetime.now().date(), key="sales3_max", label_visibility="collapsed")
+    filter_sales3_max = col_sales3_2.date_input("📅 終了", value=None, max_value=datetime.now().date(), key="sales3_max", label_visibility="collapsed")
         
     # 4. ユーザーの総評価数
     st.sidebar.markdown("##### 💬 ユーザーの総評価数")
     col_rev1, _, col_rev2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    filter_rev_min = col_rev1.number_input("💬 最小", min_value=0, max_value=max_rev_val, value=0, key="rev_min", label_visibility="collapsed")
-    filter_rev_max = col_rev2.number_input("💬 最大", min_value=0, max_value=max_rev_val, value=max_rev_val, key="rev_max", label_visibility="collapsed")
+    filter_rev_min = col_rev1.number_input("💬 最小", min_value=0, value=0, key="rev_min", label_visibility="collapsed")
+    filter_rev_max = col_rev2.number_input("💬 最大", min_value=0, value=None, key="rev_max", label_visibility="collapsed")
     
     # 5. 直近1ヶ月の総評価数
     st.sidebar.markdown("##### 📅 直近1ヶ月の総評価数")
     filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の総評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
 
-    # 数値ベースのフィルター適用
-    query_df = df_filter[
-        (df_filter["_price_num"] >= filter_price_min) & (df_filter["_price_num"] <= filter_price_max) &
-        (df_filter["_buy_num"] >= filter_buy_min) & (df_filter["_buy_num"] <= filter_buy_max) &
-        (df_filter["_rev_num"] >= filter_rev_min) & (df_filter["_rev_num"] <= filter_rev_max)
-    ]
+    # 空欄(None)に対応した安全なフィルタリング
+    query_df = df_filter.copy()
+    if filter_price_min is not None: query_df = query_df[query_df["_price_num"] >= filter_price_min]
+    if filter_price_max is not None: query_df = query_df[query_df["_price_num"] <= filter_price_max]
+    
+    if filter_buy_min is not None: query_df = query_df[query_df["_buy_num"] >= filter_buy_min]
+    if filter_buy_max is not None: query_df = query_df[query_df["_buy_num"] <= filter_buy_max]
+    
+    if filter_rev_min is not None: query_df = query_df[query_df["_rev_num"] >= filter_rev_min]
+    if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
     
     # 直近販売日3の日付範囲判定ロジック
     def check_sales3_date_range(date_str):
         if date_str in ["-", "3ヶ月以上前"]:
+            # フィルター上限・下限が設定されていない、または広い範囲なら全通しするための初期判定
+            if filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None:
+                return True
             return False
         try:
             target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
-            return filter_sales3_min <= target_dt <= filter_sales3_max
+            lower_ok = (filter_sales3_min is None or target_dt >= filter_sales3_min)
+            upper_ok = (filter_sales3_max is None or target_dt <= filter_sales3_max)
+            return lower_ok and upper_ok
         except:
             return False
             
@@ -501,17 +513,19 @@ if st.session_state.raw_data:
     )
 
     # =============================================
-    #   📊 売れやすさ計算（ロジック大改修：お宝市場・生存率判定）
+    #   📊 売れやすさ計算（100件「指定」で利用可能に緩和）
     # =============================================
     total_raw_count = len(st.session_state.raw_data)
+    target_setting = st.session_state.target_max_items
     
     st.markdown("---")
     st.subheader("📊 独立マーケット分析（売れやすさ計算）")
     
-    if total_raw_count < 100:
-        st.warning(f"⚠️ この機能は100件以上のデータを取得した際にご利用いただけます。（現在: {total_raw_count}件）")
+    # 🎯 変更点2: 実際の取得数ではなく、設定値が100件以上ならボタンを出せるように変更
+    if target_setting < 100:
+        st.warning(f"⚠️ この機能はサイドバーの「取得する商品件数」を100件以上に指定してリサーチした際にご利用いただけます。（現在の指定: {target_setting}件）")
     else:
-        st.info("💡 100件以上のデータが確認できました。精緻な売れやすさ分析が可能です。")
+        st.info(f"💡 100件以上の取得指示（実績: {total_raw_count}件）が確認されたため、精緻な売れやすさ分析が可能です。")
         
         if st.button("📊 売れやすさ指標を計算する", type="secondary"):
             st.session_state.show_calculator = True
@@ -523,14 +537,13 @@ if st.session_state.raw_data:
             )
             
             calc_one_month_ago = datetime.now() - timedelta(days=30)
-            under_1000_count = 0  # 評価1000以下の一般作家の商品数
-            target_match_count = 0  # そのうち1ヶ月以内販売の商品数
+            under_1000_count = 0  
+            target_match_count = 0  
             
             for item in st.session_state.raw_data:
                 try: r_num = int(re.sub(r"\D", "", item["総評価数"]))
                 except: r_num = 0
                 
-                # 指標軸：評価1000以下の一般作家の分母カウント
                 if r_num <= 1000:
                     under_1000_count += 1
                     
@@ -546,31 +559,24 @@ if st.session_state.raw_data:
                     if is_s3_recent:
                         target_match_count += 1
             
-            # 🎯 変更点1: 「評価1000以下のうち、何%が1ヶ月以内販売か（一般作家の生存率）」を計算軸に
             if under_1000_count > 0:
                 survival_rate = target_match_count / under_1000_count
             else:
                 survival_rate = 0.0
                 
-            # 🎯 変更点2: 全体件数が小さければ小さいほど「お宝ニッチ市場」として加算される逆補正
-            # 全体200件などで生存率が高ければ、満点に近いスコアが出るように設計
             if total_market_items <= 500:
-                market_bonus = 35  # 超ニッチお宝市場ボーナス
+                market_bonus = 35  
             elif total_market_items <= 3000:
-                market_bonus = 20  # 小規模で狙い目の市場
+                market_bonus = 20  
             elif total_market_items <= 20000:
-                market_bonus = 5   # 標準的な市場
+                market_bonus = 5   
             else:
-                # 17万件などの超巨大市場の場合、エリートが強すぎるため少し減算（難易度補正）
                 market_bonus = -int(np.log10(total_market_items / 20000) * 8)
                 market_bonus = max(market_bonus, -25)
 
-            # スコア算出 (0 - 100点調整)
-            # 生存率(最大75点分) + 市場ボーナス
             raw_score = (survival_rate * 75) + 15 + market_bonus
             final_score = min(max(int(raw_score), 5), 100)
             
-            # 判定ロジック
             if final_score >= 70:
                 judge_title = "🔥 激アツ（超おすすめ市場）"
                 judge_desc = "競合全体の絶対数が少ないか、もしくは一般作家（評価1000以下）の生存率が異常に高い『超お宝市場』です。出した商品が埋もれにくく、初心者や新着でもすぐに売れるチャンスが充満しています。"
@@ -588,7 +594,6 @@ if st.session_state.raw_data:
                 judge_desc = "上位層を含め、直近1ヶ月以内の動きが市場全体で鈍いです。需要自体が小さすぎるか、季節外れの可能性があります。別のキーワードでリサーチすることをお勧めします。"
                 color = "#F8D7DA"
                 
-            # 結果表示
             st.markdown(f"""
                 <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
                     <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
@@ -596,8 +601,9 @@ if st.session_state.raw_data:
                     <p style="font-size:14px; margin-bottom:5px;"><b>🔍 算出内訳:</b></p>
                     <ul>
                         <li>自動検出された市場総件数: <b>{total_market_items:,} 件</b>（{'⚠️ 競合が多いため難易度高めの補正' if total_market_items > 20000 else '💎 競合が少ないためお宝市場としてのボーナス加算！'}）</li>
-                        <li>調査対象の上位 {total_raw_count} 件中の一般作家（評価1000以下）: <b>{under_1000_count} 件</b></li>
-                        <li>そのうち直近1ヶ月以内に販売が動いている一般作家: <b>{target_match_count} 件</b></li>
+                        <li>調査対象の商品件数: <b>{total_raw_count} 件</b>（目標設定: {target_setting} 件）</li>
+                        <li>そのうちの一般作家（評価1000以下）: <b>{under_1000_count} 件</b></li>
+                        <li>さらに直近1ヶ月以内に販売が動いている一般作家: <b>{target_match_count} 件</b></li>
                         <li>🎯 <b>一般作家の直近生存率（指標軸）: <span style="font-size:16px; color:#1f497d; font-weight:bold;">{survival_rate*100:.1f}%</span></b></li>
                     </ul>
                     <p style="font-size:14.5px; line-height:1.6; background:rgba(255,255,255,0.5); padding:10px; border-radius:4px;">{judge_desc}</p>
