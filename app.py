@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # =============================================
 #   デザインとヘッダー設定
 # =============================================
-st.set_page_config(page_title="Creema市場リサーチツール (バグ修正版)", page_icon="💎", layout="wide")
+st.set_page_config(page_title="Creema市場リサーチツール (高速版)", page_icon="💎", layout="wide")
 
 st.markdown("""
     <style>
@@ -42,7 +42,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("💎 Creema市場リサーチツール (安定版)")
+st.title("💎 Creema市場リサーチツール (ハイスピード安定版)")
 st.markdown('<hr style="border: none; border-top: 1px solid #e6e6e6; margin-top: 15px; margin-bottom: 25px; padding: 0;">', unsafe_allow_html=True)
 
 # =============================================
@@ -65,7 +65,7 @@ max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # =============================================
-#   安全なログ管理クラス（スレッドセーフ版）
+#   安全なログ管理クラス
 # =============================================
 class RealTimeLogger:
     def __init__(self):
@@ -73,7 +73,6 @@ class RealTimeLogger:
         self.logs = []
 
     def log(self, message):
-        """メインスレッドから安全に画面を更新するための関数"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_entry = f"[{timestamp}] {message}"
         self.logs.append(log_entry)
@@ -93,7 +92,7 @@ def send_line_notification(keyword_or_url, item_count):
     except: pass
 
 # =============================================
-#   🎯 特定商品の全販売日を取得（スレッド安全版）
+#   🎯 特定商品の全販売日を取得（高速化調整版）
 # =============================================
 def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago, task_logs, item_no):
     all_matched_dates = []
@@ -105,7 +104,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
         try:
             res = requests.get(current_url, headers=headers, timeout=8)
             if res.status_code == 403:
-                task_logs.append(f"⚠️ [商品{item_no}] 評価P{current_page}でアクセス拒否(403)されました。")
+                task_logs.append(f"⚠️ [商品{item_no}] 評価P{current_page}でアクセス拒否(403)。速度を落とすサインです。")
                 break
             if res.status_code != 200:
                 break
@@ -139,10 +138,10 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             else:
                 current_url = f"{base_rating_url}?page={current_page}"
                 
-            time.sleep(0.6)  
+            time.sleep(0.4)  # ⚡ 待機時間を0.6sから0.4sへ微短縮してテンポ向上
             
         except requests.exceptions.Timeout:
-            task_logs.append(f"⏳ [商品{item_no}] 評価P{current_page}で通信タイムアウト。スキップします。")
+            task_logs.append(f"⏳ [商品{item_no}] 評価P{current_page}で通信タイムアウト。スキップ。")
             break
         except Exception as e:
             task_logs.append(f"❌ [商品{item_no}] 評価P{current_page}でエラー: {str(e)}")
@@ -152,10 +151,9 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
     return [d.strftime("%Y.%m.%d") for d in all_matched_dates]
 
 # =============================================
-#   単一商品を解析するコアロジック（ログ蓄積版）
+#   単一商品を解析するコアロジック
 # =============================================
 def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, item_no):
-    # スレッド内での画面書き換えを避け、テキストとして配列にログを溜める
     task_logs = []
     try:
         link = item_data["link"]
@@ -202,7 +200,7 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, item_
                     required_sales_count = min(p_num, 3) if p_num > 0 else 0
                 
                 if required_sales_count > 0:
-                    task_logs.append(f"  🔍 [商品{item_no}] 直近販売日の追跡を開始（目標: {required_sales_count}件）")
+                    task_logs.append(f"  🔍 [商品{item_no}] 直近販売日を検索（目標: {required_sales_count}件）")
                     sorted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago, task_logs, item_no)
                     
                     for idx in range(required_sales_count):
@@ -263,7 +261,7 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago, item_
         }
         return result_data, task_logs
     except Exception as e:
-        task_logs.append(f"❌ [商品{item_no}] 重大なエラーでスキップされました: {str(e)}")
+        task_logs.append(f"❌ [商品{item_no}] エラーでスキップ: {str(e)}")
         return None, task_logs
 
 # =============================================
@@ -290,7 +288,7 @@ def scrape_creema_fast(start_url, max_num, logger):
         try:
             response = requests.get(current_url, headers=headers, timeout=10)
             if response.status_code == 403:
-                logger.log("❌ 一覧ページでアクセス拒否(403)されました。ロボット判定された可能性があります。")
+                logger.log("❌ 一覧ページでアクセス拒否(403)されました。")
                 break
             if response.status_code != 200: break
             soup = BeautifulSoup(response.content, "html.parser")
@@ -319,7 +317,7 @@ def scrape_creema_fast(start_url, max_num, logger):
             if next_tag and "href" in next_tag.attrs:
                 current_url = next_tag["href"] if next_tag["href"].startswith("http") else "https://www.creema.jp" + next_tag["href"]
                 page_count += 1
-                time.sleep(1.2)
+                time.sleep(1.0) # 一覧ページの遷移を1.2sから1.0sへ調整
             else:
                 current_url = None
         except Exception as e:
@@ -339,15 +337,13 @@ def scrape_creema_fast(start_url, max_num, logger):
     
     scraped_data = []
     
-    # 安全のため並行数を「3」で処理
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    # 🚀 限界突破：並行数を「3」から「5」に引き上げてリクエストを最大化
+    with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago, i+1): i for i, item_data in enumerate(all_item_elements_data)}
         
         for current_idx, future in enumerate(as_completed(future_to_item), 1):
-            # スレッド完了後に結果とログテキストを「メインスレッド」で受け取る
             result, task_logs = future.result()
             
-            # メインスレッド側で安全に画面へログを一括出力
             for msg in task_logs:
                 logger.log(msg)
                 
