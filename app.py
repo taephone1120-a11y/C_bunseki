@@ -390,10 +390,9 @@ def convert_df_to_excel(df):
     return output.getvalue()
 
 # =============================================
-#   📞 Gemini API 呼び出し関数 (一括分析・改善版)
+#  📞 Gemini API 呼び出し関数 (Qiitaエラー対策・改善版)
 # =============================================
 def generate_text_with_gemini_batch(api_key, candidate_items, my_stone, my_features):
-    # モデル名を最新の2.0（または安定版の1.5の正式指定）に変更します
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     
@@ -402,9 +401,10 @@ def generate_text_with_gemini_batch(api_key, candidate_items, my_stone, my_featu
     for _, row in candidate_items.iterrows():
         items_summary += f"■タイトル: {row['商品名']} (購入者数: {row['_buy_num']}人)\n"
     
-    prompt = f"""
-あなたはハンドメイドマーケット（Creema/minne）の市場リサーチとコピーライティングのプロフェッショナルです。
-現在、以下の10件の「売れ筋作品」のタイトルを分析対象とします。これらのデータから、市場でクリック率を稼いでいるキーワード選定や構成の法則を導き出し、ユーザーの新作のためのタイトル案を作成してください。
+    # 役割やルールは「systemInstruction」側に隔離し、ユーザープロンプトを軽量化
+    system_instruction = "あなたはハンドメイドマーケット（Creema/minne）の市場リサーチとコピーライティングのプロフェッショナルです。クリック率を稼ぐキーワード選定や構成の法則を導き出し、売れるタイトルを提案してください。"
+
+    user_prompt = f"""現在、以下の10件の「売れ筋作品」のタイトルを分析対象とします。これらのデータから法則を導き出し、ユーザーの新作のためのタイトル案を作成してください。
 
 ---
 【分析対象：売れ筋商品10選】
@@ -429,22 +429,34 @@ def generate_text_with_gemini_batch(api_key, candidate_items, my_stone, my_featu
 3. **【トレンド融合型】**: 今回分析したヒット作品の構成を模倣しつつ、新作の特徴を掛け合わせたバランス型。
 """
     
-    # 形式をより確実な構造に修正し、安全のために安全フィルター（safetySettings）などを無効化・調整する記述に合わせます
+    # Qiita記事を参考に、400/429を回避する完全なJSON構造を構築
     payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt}
-                ]
-            }
-        ]
+        "contents": [{
+            "parts": [{"text": user_prompt}]
+        }],
+        "systemInstruction": {
+            "parts": [{"text": system_instruction}]
+        },
+        # 誤判定の原因となるセーフティフィルターをすべて「制限なし」に明示的設定
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        ],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 2048
+        }
     }
+    
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=40)
+        res = requests.post(url, headers=headers, json=payload, timeout=60)
         if res.status_code == 200:
             return res.json()["candidates"][0]["content"]["parts"][0]["text"]
         else:
-            return f"❌ Gemini APIエラー (Status Code: {res.status_code})"
+            error_details = res.text
+            return f"❌ Gemini APIエラー (Status Code: {res.status_code})\n詳細: {error_details}"
     except Exception as e:
         return f"❌ 通信エラーが発生しました: {str(e)}"
 
