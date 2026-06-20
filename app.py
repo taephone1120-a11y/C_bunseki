@@ -149,7 +149,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
     return [d.strftime("%Y.%m.%d") for d in all_matched_dates]
 
 # =============================================
-#   単一商品を詳細解析（紹介文のスクレイピングを追加）
+#   単一商品を詳細解析
 # =============================================
 def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
     try:
@@ -166,13 +166,12 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
         last_page_url = None
         last_voices = []
         recent_sales = ["-", "-", "-"]
-        description_text = "取得失敗" # AI分析用に作品紹介文を保存する変数
+        description_text = "取得失敗" 
         
         detail_res = requests.get(link, headers=headers, timeout=8)
         if detail_res.status_code == 200:
             detail_soup = BeautifulSoup(detail_res.content, "html.parser")
             
-            # 作品紹介文の取得を追加
             desc_element = detail_soup.select_one(".js-item-description, .p-item-detail__description")
             if desc_element:
                 description_text = desc_element.text.strip()
@@ -266,7 +265,7 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
             "総評価数": review,
             "直近1ヶ月の評価数": recent_review_display,
             "一番初めの評価日": first_review_date,
-            "作品紹介文": description_text # 画面非表示用の隠しデータ
+            "作品紹介文": description_text 
         }
         return result_data
     except:
@@ -364,7 +363,6 @@ def scrape_creema_fast(start_url, max_num):
 def convert_df_to_excel(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Excel出力用に不要な隠しカラムを除去してエクスポート
         export_df = df.drop(columns=["作品紹介文"]) if "作品紹介文" in df.columns else df
         export_df.to_excel(writer, sheet_name="リサーチ結果", index=False)
         worksheet = writer.sheets["リサーチ結果"]
@@ -557,7 +555,7 @@ if st.session_state.raw_data:
     )
 
     # =============================================
-    #   📊 売れやすさ計算 (既存ロジック)
+    #   📊 売れやすさ計算 (★詳しく表示する詳細版に復活)
     # =============================================
     total_raw_count = len(st.session_state.raw_data)
     st.markdown("---")
@@ -601,37 +599,46 @@ if st.session_state.raw_data:
 
             if ratio_3months_sales <= 0.50:
                 judge_title, color = "❄️ お休み市場（需要低迷、または停滞）", "#F8D7DA"
-                judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}% しかありません。動きが非常に鈍い市場です。"
+                judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}%（基準50%以下）しかありません。市場全体の動きが非常に鈍く、需要が一時的に冷え込んでいるか、季節外れの可能性があります。別のキーワードでのリサーチをお勧めします。"
                 final_score = min(max(int((ratio_3months_sales / 0.50) * 30), 0), 30)
             elif (ratio_active_vs_total <= 0.15) or (ratio_active_vs_general <= 0.30):
                 judge_title, color = "⚖️ レッドオーシャン（大手が強すぎる市場）", "#FFF3CD"
-                judge_desc = f"直近1ヶ月に動いた一般作家が全体に対し {ratio_active_vs_total*100:.1f}%。上位を大手が独占しています。"
+                judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを大手が独占しており、一般作家が普通に参入しても埋もれやすい過密市場です。差別化戦略が必須となります。"
                 final_score = min(max(30 + int(min(ratio_active_vs_total/0.15, ratio_active_vs_general/0.30) * 20), 30), 50)
             else:
                 market_bonus = 35 if total_market_items <= 500 else (20 if total_market_items <= 3000 else (5 if total_market_items <= 20000 else max(-int(np.log10(total_market_items / 20000) * 12), -25)))
                 final_score = min(max(int((ratio_active_vs_general * 60) + 30 + market_bonus), 51), 100) 
                 if final_score >= 75:
                     judge_title, color = "🔥 激アツ（超おすすめ市場）", "#D4EDDA"
-                    judge_desc = "競合件数が適正で、一般作家の生存率が非常に高いお宝市場です。"
+                    judge_desc = f"全体の競合件数（{total_market_items:,}件）が適正、かつ一般作家の生存率が非常に高い『理想的なお宝市場』です。大手に需要を吸い尽くされておらず、新しく商品を出しても上位表示や即売れを狙えるチャンスが極めて高い状態です。"
                 else:
                     judge_title, color = "✨ 狙い目（十分にチャンスあり）", "#CCE5FF"
-                    judge_desc = "健全に回転しており、一般作家でも十分に売上を立てられる市場です。"
+                    judge_desc = f"適度に市場が回転しており、一般作家でも十分に売上を立てられる健全な市場です。独自のタイトルワークや見せ方で攻めることで、さらに高い確率でファンを掴めます。"
 
+            # 詳しい算出内訳を表示するHTML枠
             st.markdown(f"""
                 <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
                     <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
                     <h4>判定：{judge_title}</h4>
-                    <p style="font-size:14.5px;"><b>💡 総評:</b> {judge_desc}</p>
+                    <p style="font-size:14px; margin-bottom:5px;"><b>🔍 新・判定ロジック算出内訳:</b></p>
+                    <ul>
+                        <li>自動検出された市場総件数: <b>{total_market_items:,} 件</b></li>
+                        <li>📅 <b>直近3ヶ月以内の販売商品割合（基準>50%）: <span style="font-size:15px; font-weight:bold;">{ratio_3months_sales*100:.1f}%</span></b> （{total_recent_sales_3months}件 / {total_artists_count}件中）</li>
+                        <li>解析対象内の一般作家（評価1000以下）: <b>{under_1000_count} 件 / {total_artists_count}件中</b></li>
+                        <li>直近1ヶ月以内に動いている一般作家: <b>{active_under_1000_count} 件</b></li>
+                        <li>📈 <b>対全体比率（基準>15%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_total*100:.1f}%</span></b></li>
+                        <li>🎯 <b>対一般作家比率（基準>30%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_general*100:.1f}%</span></b></li>
+                    </ul>
+                    <p style="font-size:14.5px; line-height:1.6; background:rgba(255,255,255,0.5); padding:10px; border-radius:4px; margin-top:10px;"><b>💡 総評:</b><br>{judge_desc}</p>
                 </div>
             """, unsafe_allow_html=True)
 
     # =============================================
-    #   🤖 👑 Gemini作品タイトル・紹介文提案生成エリア (更新版)
+    #   🤖 👑 Gemini作品タイトル・紹介文提案生成エリア
     # =============================================
     st.markdown("---")
     st.subheader("🤖 Gemini売れ筋アライアンス生成アシスタント")
     
-    # 優先ロジックに従い、商品をランク付けする
     df_recommend = df_filter.copy()
     today_dt = datetime.now()
     one_month_ago_date = (today_dt - timedelta(days=30)).date()
@@ -645,33 +652,21 @@ if st.session_state.raw_data:
     df_recommend["_date1_obj"] = df_recommend["直近販売日1"].apply(get_date_obj)
     df_recommend["_date3_obj"] = df_recommend["直近販売日3"].apply(get_date_obj)
     
-    # ご指定の優先順位を判定するロジック
     def calc_priority_rank(row):
         d1 = row["_date1_obj"]
         d3 = row["_date3_obj"]
         buy = row["_buy_num"]
         
-        # ① 直近販売日３が1ヶ月以内 ＆ 購入者数500人以内
         if d3 and d3 >= one_month_ago_date and buy <= 500: return 1
-        # ② 直近販売日３が1ヶ月以内 ＆ 購入者数1000人以内
         if d3 and d3 >= one_month_ago_date and buy <= 1000: return 2
-        # ③ 直近販売日１が1ヶ月以内 ＆ 購入者数1000人以内
         if d1 and d1 >= one_month_ago_date and buy <= 1000: return 3
-        # ④ 直近販売日１が3ヶ月以内 ＆ 購入者数1000人以内
         if d1 and d1 >= three_months_ago_date and buy <= 1000: return 4
-        
-        return 99 # 条件外
+        return 99 
 
     df_recommend["優先ランク"] = df_recommend.apply(calc_priority_rank, axis=1)
-    
-    # 優先ランク順でソート（ランク1が最優先）
-    # 同ランク内では購入者数が少ない（＝最近のリアルな売れ筋の）順に並べる
     df_recommend = df_recommend.sort_values(by=["優先ランク", "_buy_num"], ascending=[True, True])
     
-    # 条件合致したものを上位10件までピックアップ
     candidate_items = df_recommend[df_recommend["優先ランク"] != 99].head(10)
-    
-    # もし10件に満たない場合は、条件外から補填
     if len(candidate_items) < 10:
         backup = df_recommend[df_recommend["優先ランク"] == 99].head(10 - len(candidate_items))
         candidate_items = pd.concat([candidate_items, backup])
@@ -681,10 +676,8 @@ if st.session_state.raw_data:
     else:
         st.markdown(f"**自動ピックアップ完了:** 最適な参考商品が {len(candidate_items)} 件見つかりました。")
         
-        # セレクトボックスの設定
         select_options = []
         option_to_data = {}
-        
         for idx, row in candidate_items.iterrows():
             rank_label = f"【優先{row['優先ランク']}】" if row['優先ランク'] != 99 else "【参考】"
             display_name = f"{rank_label} (購入:{row['_buy_num']}人) {row['商品名'][:30]}..."
@@ -692,8 +685,6 @@ if st.session_state.raw_data:
             option_to_data[display_name] = row
 
         gemini_key = st.text_input("🔑 Gemini APIキーを入力してください", type="password", help="Google AI Studioで取得したAPIキーを入力します。")
-        
-        # デフォルトで一番上のものを選択状態にする
         chosen_option = st.selectbox("🎯 AI分析の参考にする商品（推奨順）", select_options, index=0)
         
         col_input1, col_input2 = st.columns(2)
