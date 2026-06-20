@@ -535,11 +535,13 @@ if st.session_state.raw_data:
             st.session_state.show_calculator = True
             
         if st.session_state.get("show_calculator", False):
-            total_market_items = st.number_input(
-                "🔍 自動取得された市場全体の総検索結果件数（必要であれば微調整してください）",
-                min_value=100, max_value=5000000, value=int(st.session_state.market_total), step=1000
-            )
-            
+           # 初期値がmin_value(1)を下回らないように安全策を入れる
+default_market_total = max(1, int(st.session_state.market_total))
+
+total_market_items = st.number_input(
+    "🔍 自動取得された市場全体の総検索結果件数（必要であれば微調整してください）",
+    min_value=1, max_value=5000000, value=default_market_total, step=1000
+)
             calc_one_month_ago = datetime.now() - timedelta(days=30)
             calc_three_months_ago = datetime.now() - timedelta(days=90)
             
