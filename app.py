@@ -700,7 +700,7 @@ if generate_btn:
 st.write("---") # 区切り線
 st.subheader("✍️ 作品紹介文（説明文）のプロンプト作成")
 
-# 紹介文用のタイトル入力欄（ボタンの直上、または直下に表示されます）
+# 紹介文用のタイトル入力欄
 my_product_title = st.text_input(
     "🏷️ 出品する作品のタイトル（決まっている場合や、上記で決めたタイトルを入力してください）",
     value="【はだかのお守り】ラピスラズリのワイヤーラップリング / 天然石指輪",
@@ -711,22 +711,48 @@ my_product_title = st.text_input(
 generate_desc_btn = st.button("🚀 市場10選を分析して作品紹介文を提案してもらう", type="secondary")
 
 if generate_desc_btn:
-    with st.spinner("📝 紹介文用プロンプトを作成中..."):
+    with st.spinner("🕵️‍♂️ 市場10選の作品ページから、リアルタイムに紹介文を読み込んでいます（数秒かかります）..."):
         
-        # 裏で市場10選の「作品紹介文」をピックアップしてテキスト化
-        # ※データフレームに '作品紹介文' や '商品説明' という列がある想定です。列名に合わせて `row['作品紹介文']` の部分を変更してください。
-        # 裏で市場10選の「作品紹介文」をピックアップしてテキスト化
         descriptions_summary = ""
+        
+        # 10件の商品を1つずつループ処理
         for i, row in candidate_items.iterrows():
-            # データフレームから紹介文を取得
-            desc_text = row.get('作品紹介文', row.get('商品説明', '（紹介文データなし）'))
+            item_name = row['商品名']
             
-            # 【修正ポイント】
-            # .replace('\n', ' ') を削除して改行をそのまま残し、
-            # [:200] の文字数制限をなくして（あるいは1000文字など長めにして）丸ごとプロンプトに流します
-            desc_snippet = str(desc_text)
+            # データフレームにURLが入っている列（'商品URL'、'URL'、'リンク' など）を探します
+            item_url = row.get('商品URL', row.get('URL', row.get('url', row.get('作品URL', None))))
             
-            descriptions_summary += f"■人気商品{i+1}: {row['商品名']}\n【紹介文】:\n{desc_snippet}\n\n"
+            # もしURLが相対パス（/item/12345/detail）だった場合の対策
+            if item_url and item_url.startswith('/'):
+                item_url = f"https://www.creema.jp{item_url}"
+                
+            cleaned_desc = "（紹介文の取得に失敗しました）"
+            
+            # URLが正しく取得できている場合、その場でCreemaのページを読みにいきます
+            if item_url:
+                try:
+                    # 人間用のブラウザのふりをする設定
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    }
+                    # ページをダウンロード
+                    response = requests.get(item_url, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        # BeautifulSoupでHTMLを解析
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        # あなたが教えてくれたCreemaの紹介文の目印（クラス名）を探す
+                        desc_element = soup.find('div', class_='p-item-detail-description')
+                        
+                        if desc_element:
+                            # タグを消し、<br>を綺麗な改行にしてテキストを抽出
+                            raw_text = desc_element.get_text('\n', strip=True)
+                            # 3つ以上連続する無駄な改行をすっきり整形
+                            cleaned_desc = re.sub(r'\n{3,}', '\n\n', raw_text)
+                except Exception as e:
+                    cleaned_desc = f"（通信エラーにより取得失敗: {str(e)}）"
+            
+            # 取得した紹介文をプロンプト用に積み上げる
+            descriptions_summary += f"■人気商品{i+1}: {item_name}\n【紹介文】:\n{cleaned_desc}\n\n"
             
         # ChatGPTやGeminiにそのまま貼り付けられる完成形プロンプトを組み立て
         final_desc_prompt = f"""あなたはハンドメイドマーケット（Creemaやminne）で月商100万円以上を売り上げるトップクリエイターであり、お客様の心を動かすWEBライティングの専門家です。
@@ -734,7 +760,7 @@ if generate_desc_btn:
 以下の【分析対象：売れている商品の紹介文一覧】と【私の作品情報】を徹底的に分析し、お客様が思わず欲しくなる最高の「作品紹介文（商品説明文）」を作成するためのデータを抽出し、さらに紹介文を3パターン提案してください。
 
 ---
-【分析対象：売れている商品の紹介文一覧（抜粋）】
+【分析対象：売れている商品の紹介文一覧】
 {descriptions_summary}
 ---
 【私の作品情報】
@@ -743,10 +769,10 @@ if generate_desc_btn:
 {my_work_description}
 ---
 
-以下の構成とルールを厳守して出力してください。
+以下の構成とルールを厳婚して出力してください。
 
 ### 1. 人気商品の紹介文分析
-* **文章構成の傾向**: 売れている作品が「どのような順番（挨拶→作品の背景→サイズ等の仕様→注意書きなど）」で書かれているか、共通する構成の黄金ルートを解説してください。
+* **文章構成의 傾向**: 売れている作品が「どのような順番（挨拶→作品の背景→サイズ等の仕様→注意書きなど）」で書かれているか、共通する構成の黄金ルートを解説してください。
 * **多用されているキーワード・響く表現**: お客様の購買意欲をそそる、紹介文の中でよく使われているキーワードや魅力的な言い回しを抽出してください。
 * **どのようなことが書いてあるか（内容の共通点）**: 石の効能、制作のこだわり、コーディネートの提案など、売れている紹介文に必ず盛り込まれている内容をまとめてください。
 
