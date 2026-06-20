@@ -390,77 +390,6 @@ def convert_df_to_excel(df):
     return output.getvalue()
 
 # =============================================
-#  📞 Gemini API 呼び出し関数 (Qiitaエラー対策・改善版)
-# =============================================
-def generate_text_with_gemini_batch(api_key, candidate_items, my_stone, my_features):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-    headers = {"Content-Type": "application/json"}
-    
-    # 候補商品の情報をリストアップ
-    items_summary = ""
-    for _, row in candidate_items.iterrows():
-        items_summary += f"■タイトル: {row['商品名']} (購入者数: {row['_buy_num']}人)\n"
-    
-    # 役割やルールは「systemInstruction」側に隔離し、ユーザープロンプトを軽量化
-    system_instruction = "あなたはハンドメイドマーケット（Creema/minne）の市場リサーチとコピーライティングのプロフェッショナルです。クリック率を稼ぐキーワード選定や構成の法則を導き出し、売れるタイトルを提案してください。"
-
-    user_prompt = f"""現在、以下の10件の「売れ筋作品」のタイトルを分析対象とします。これらのデータから法則を導き出し、ユーザーの新作のためのタイトル案を作成してください。
-
----
-【分析対象：売れ筋商品10選】
-{items_summary}
-
----
-【ユーザーの新作情報】
-■使用している天然石: {my_stone}
-■作品の特徴・こだわり: {my_features}
----
-
-以下の構成で回答してください。
-
-### 1. 市場タイトルの分析
-* **トレンドの法則**: 10件のデータを分析し、ヒットしている作品に共通する「キーワードの並び順」「フック（記号や訴求点）」の傾向を解説してください。
-* **多用されているヒットキーワード**: 上記のジャンルで検索されやすい、または目を引くキーワードを5つ抽出してください。
-
-### 2. 新作タイトル案（3選）
-分析結果に基づき、以下の3つの切り口でタイトルを提案してください。
-1. **【検索ボリューム重視】**: 上位キーワードを戦略的に盛り込んだ、検索に引っかかりやすいタイトル。
-2. **【情緒的訴求重視】**: ユーザーのこだわりや天然石の魅力を最大限に伝える、ストーリー性を重視したタイトル。
-3. **【トレンド融合型】**: 今回分析したヒット作品の構成を模倣しつつ、新作の特徴を掛け合わせたバランス型。
-"""
-    
-    # Qiita記事を参考に、400/429を回避する完全なJSON構造を構築
-    payload = {
-        "contents": [{
-            "parts": [{"text": user_prompt}]
-        }],
-        "systemInstruction": {
-            "parts": [{"text": system_instruction}]
-        },
-        # 誤判定の原因となるセーフティフィルターをすべて「制限なし」に明示的設定
-        "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-        ],
-        "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 2048
-        }
-    }
-    
-    try:
-        res = requests.post(url, headers=headers, json=payload, timeout=60)
-        if res.status_code == 200:
-            return res.json()["candidates"][0]["content"]["parts"][0]["text"]
-        else:
-            error_details = res.text
-            return f"❌ Gemini APIエラー (Status Code: {res.status_code})\n詳細: {error_details}"
-    except Exception as e:
-        return f"❌ 通信エラーが発生しました: {str(e)}"
-
-# =============================================
 #   メイン制御とセッション管理
 # =============================================
 if "raw_data" not in st.session_state: st.session_state.raw_data = None
@@ -681,17 +610,45 @@ if st.session_state.raw_data:
         generate_btn = st.button("🚀 市場10選を分析してタイトルを提案してもらう", type="primary")
         
         if generate_btn:
-            if not gemini_key:
-                st.error("⚠️ APIキーを入力してください。")
-            else:
-                with st.spinner("🧙‍♂️ AIが市場全体を俯瞰分析中..."):
-                    ai_result = generate_text_with_gemini_batch(
-                        api_key=gemini_key,
-                        candidate_items=candidate_items,
-                        my_stone=my_stone_input,
-                        my_features=my_features_input
-                    )
-                st.markdown('<div class="ai-box">', unsafe_allow_html=True)
-                st.subheader("✨ 市場トレンド分析 & タイトル案")
-                st.markdown(ai_result)
-                st.markdown('</div>', unsafe_allow_html=True)
+            # APIキーのチェックは不要になったので削除し、すぐに処理を開始します
+            with st.spinner("📝 AI用のプロンプトを作成中..."):
+                
+                # 10件の売れ筋データ（candidate_items）からタイトル一覧のテキストを作成
+                items_summary = ""
+                for _, row in candidate_items.iterrows():
+                    items_summary += f"・{row['商品名']} (購入者数: {row['_buy_num']}人)\n"
+                    
+                # ChatGPTやGeminiにそのまま貼り付けられる完成形プロンプトを組み立て
+                final_prompt = f"""あなたはハンドメイドマーケット（Creemaやminne）の市場リサーチとコピーライティングのプロフェッショナルです。
+以下の【分析対象：売れている商品のタイトル一覧】と【出品する作品の情報】を元に、売れる商品タイトルを考えてください。
+
+---
+【分析対象：売れている商品のタイトル一覧】
+{items_summary}
+---
+【出品する作品の情報】
+■使用している天然石: {my_stone_input}
+■作品の特徴・こだわり: {my_features_input}
+---
+
+以下の構成で出力してください。
+
+### 1. 売れている商品のタイトル分析
+* **よく入っているキーワード**: 10件の売れているタイトルから、特に多用されている、または重要度の高いキーワードを5つ抽出して解説してください。
+* **全体の傾向とアドバイス**: 売れている作品の「キーワードの並び順」や「フック（記号や訴求点）」の傾向、新作を出品する際のアドバイスを詳しく教えてください。
+
+### 2. 新作商品タイトル案（3選）
+分析結果に基づき、クリックされやすいタイトルを以下の3つの切り口で提案してください。
+1. **【検索ボリューム重視】**: 上位キーワードを戦略的に盛り込んだ、検索に引っかかりやすいタイトル。
+2. **【情緒的訴求重視】**: ユーザーのこだわりや天然石の魅力を最大限に伝える、ストーリー性を重視したタイトル。
+3. **【トレンド融合型】**: 今回分析したヒット作品の構成を模倣しつつ、新作の特徴を掛け合わせたバランス型。
+"""
+            
+            # デザイン枠（ai-box）の中に、完成したプロンプトを表示します
+            st.markdown('<div class="ai-box">', unsafe_allow_html=True)
+            st.subheader("📋 AI用コピーテキストの作成完了")
+            st.success("✨ 下の枠内のテキストをすべてコピーして、ChatGPTやGeminiのチャット欄に貼り付けてください。")
+            
+            # コピーしやすいように大きなテキストエリアで表示します
+            st.text_area("以下の文章を丸ごとコピーしてください：", value=final_prompt, height=450)
+            st.markdown('</div>', unsafe_allow_html=True)
