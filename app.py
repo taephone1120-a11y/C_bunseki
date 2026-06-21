@@ -687,7 +687,6 @@ if generate_btn:
 3. **【トレンド融合型】**: 今回分析したヒット作品の構成を模倣しつつ、新作の特徴を掛け合わせたバランス型。
 """
     
-    st.markdown('<div class="ai-box">', unsafe_allow_html=True)
     st.subheader("📋 【タイトル用】AI用コピーテキスト")
     st.success("✨ 下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
     st.text_area("以下の文章を丸ごとコピーしてください：", value=final_title_prompt, height=400, key="title_prompt_area")
