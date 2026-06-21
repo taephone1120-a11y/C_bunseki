@@ -589,7 +589,7 @@ if st.session_state.raw_data:
     # 🤖 👑 Gemini作品タイトル提案エリア (復活・修正部分)
     # =============================================
     st.markdown("---")
-    st.subheader("🤖 売れ筋10選ベース：作品タイトルAI自動提案")
+    st.subheader("🤖 作品タイトルのプロンプト作成")
 
     # 絞り込み後のデータ（query_df）から購入者数（_buy_num）が多い順に上位10件を自動抽出（バグ修正）
     if not query_df.empty:
@@ -600,7 +600,7 @@ if st.session_state.raw_data:
     if candidate_items.empty:
         st.warning("⚠️ 参考データが見つかりませんでした。フィルターを緩めてみてください。")
     else:
-        st.markdown(f"**自動ピックアップ完了:** 市場の参考商品が {len(candidate_items)} 件抽出されました。これらを一括分析します。")
+        st.markdown(市場の参考商品が {len(candidate_items)} 件抽出されました。これを参考に、タイトルや紹介文を作成します。")
         
         my_work_description = st.text_area(
     "📝 あなたの作品の説明・特徴・こだわり", 
@@ -609,7 +609,7 @@ if st.session_state.raw_data:
     help="使用している天然石の名前や、作品のこだわり、デザインの特徴などを自由に入力してください。"
 )
         
-        generate_btn = st.button("🚀 市場10選を分析してタイトルを提案してもらう", type="primary")
+        generate_btn = st.button("🚀 タイトル提案のプロンプト作成", type="primary")
 # =================================================================
 # 🛍️ ボタン1: 市場10選を分析してタイトルを提案してもらう
 # =================================================================        
@@ -669,7 +669,7 @@ my_product_title = st.text_input(
 )
 
 # 紹介文生成用のボタン
-generate_desc_btn = st.button("🚀 市場10選を分析して作品紹介文を提案してもらう", type="primary")
+generate_desc_btn = st.button("🚀 作品紹介文提案のプロンプト作成", type="primary")
 
 if generate_desc_btn:
     with st.spinner("🕵️‍♂️ 市場10選の作品ページから、リアルタイムに紹介文を読み込んでいます（数秒かかります）..."):
