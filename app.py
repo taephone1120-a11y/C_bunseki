@@ -600,7 +600,7 @@ if st.session_state.raw_data:
     if candidate_items.empty:
         st.warning("⚠️ 参考データが見つかりませんでした。フィルターを緩めてみてください。")
     else:
-        st.markdown("市場の参考商品が {len(candidate_items)} 件抽出されました。これを参考に、タイトルや紹介文を作成します。")
+        st.markdown("市場の人気を参考に、タイトルや紹介文を作成します。")
         
         my_work_description = st.text_area(
     "📝 あなたの作品の説明・特徴・こだわり", 
