@@ -771,6 +771,9 @@ if 'candidate_items' in locals() and not candidate_items.empty:
     st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
     st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
     
+ st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
+    st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
+    
     # 1. まずはテキストエリアを表示（valueの中身が final_desc_prompt になっているか確認）
     st.text_area("以下の文章を丸ごとコピーしてください：", value=final_desc_prompt, height=500, key="desc_prompt_area")
     
