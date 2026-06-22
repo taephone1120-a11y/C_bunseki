@@ -654,6 +654,7 @@ if st.session_state.raw_data:
             # コピーしやすいように大きなテキストエリアで表示
             st.text_area("以下の文章を丸ごとコピーしてください：", value=final_prompt, height=450)
             st.markdown('</div>', unsafe_allow_html=True)
+# 💡 検索後（データが存在する場合）のみエリア全体を表示
 if 'candidate_items' in locals() and not candidate_items.empty:
 
     # =================================================================
@@ -665,63 +666,60 @@ if 'candidate_items' in locals() and not candidate_items.empty:
     # 紹介文用のタイトル入力欄
     my_product_title = st.text_input(
         "🏷️ 出品する作品のタイトル（決まっている場合や、上記で決めたタイトルを入力してください）",
-        value="", # ※デフォルト値はお好みで変更してください
+        value="", 
         help="AIが紹介文を作成する際に、このタイトルとの整合性を意識して文章を作ります。"
     )
-
-    # ⚠️ ここに、もし「私の作品の説明・特徴」を入力する st.text_area("my_work_description") などがあれば、それもここに配置してください
 
     # 紹介文生成用のボタン（赤色に統一！）
     generate_desc_btn = st.button("🚀 市場10選を分析して作品紹介文を提案してもらう", type="primary")
 
+    # 💡 【重要】ここから下の全ての処理を「ボタンを押した時だけ」の枠（ifの中）に正しく入れました
     if generate_desc_btn:
         with st.spinner("🕵️‍♂️ 市場10選の作品ページから、リアルタイムに紹介文を読み込んでいます（数秒かかります）..."):
             
             descriptions_summary = ""
         
-        # 10件の商品を1つずつループ処理
-        for i, row in candidate_items.iterrows():
-            item_name = row['商品名']
-            
-            # データフレームにURLが入っている列（'商品URL'、'URL'、'リンク' など）を探します
-            item_url = row.get('商品URL', row.get('URL', row.get('url', row.get('作品URL', None))))
-            
-            # もしURLが相対パス（/item/12345/detail）だった場合の対策
-            if item_url and item_url.startswith('/'):
-                item_url = f"https://www.creema.jp{item_url}"
+            # 10件の商品を1つずつループ処理
+            for i, row in candidate_items.iterrows():
+                item_name = row['商品名']
                 
-            cleaned_desc = "（紹介文の取得に失敗しました）"
-            
-            # URLが正しく取得できている場合、その場でCreemaのページを読みにいきます
-            if item_url:
-                try:
-                    # 人間用のブラウザのふりをする設定
-                    headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                    }
-                    # ページをダウンロード
-                    response = requests.get(item_url, headers=headers, timeout=10)
-                    if response.status_code == 200:
-                        # BeautifulSoupでHTMLを解析
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        # あなたが教えてくれたCreemaの紹介文の目印（クラス名）を探す
-                        desc_element = soup.find('div', class_='p-item-detail-description')
-                        
-                        if desc_element:
-                            # タグを消し、<br>を綺麗な改行にしてテキストを抽出
-                            raw_text = desc_element.get_text('\n', strip=True)
-                            # 3つ以上連続する無駄な改行をすっきり整形
-                            cleaned_desc = re.sub(r'\n{3,}', '\n\n', raw_text)
-                except Exception as e:
-                    cleaned_desc = f"（通信エラーにより取得失敗: {str(e)}）"
-            
-            # 取得した紹介文をプロンプト用に積み上げる
-            descriptions_summary += f"■人気商品{i+1}: {item_name}\n【紹介文】:\n{cleaned_desc}\n\n"
-            
-        # ChatGPTやGeminiにそのまま貼り付けられる完成形プロンプトを組み立て
-        # ChatGPTやGeminiにそのまま貼り付けられる完成形プロンプトを組み立て
-        # ChatGPTやGeminiにそのまま貼り付けられる完成形プロンプトを組み立て
-        final_desc_prompt = f"""あなたはハンドメイドマーケット（Creemaやminne）で月商100万円以上を売り上げるトップクリエイターであり、お客様の心を動かすWEBライティングの専門家です。
+                # データフレームにURLが入っている列を探す
+                item_url = row.get('商品URL', row.get('URL', row.get('url', row.get('作品URL', None))))
+                
+                # もしURLが相対パスだった場合の対策
+                if item_url and item_url.startswith('/'):
+                    item_url = f"https://www.creema.jp{item_url}"
+                    
+                cleaned_desc = "（紹介文の取得に失敗しました）"
+                
+                # URLが正しく取得できている場合、その場でCreemaのページを読みにいきます
+                if item_url:
+                    try:
+                        # 人間用のブラウザのふりをする設定
+                        headers = {
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        }
+                        # ページをダウンロード
+                        response = requests.get(item_url, headers=headers, timeout=10)
+                        if response.status_code == 200:
+                            # BeautifulSoupでHTMLを解析
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            # Creemaの紹介文の目印（クラス名）を探す
+                            desc_element = soup.find('div', class_='p-item-detail-description')
+                            
+                            if desc_element:
+                                # タグを消し、<br>を綺麗な改行にしてテキストを抽出
+                                raw_text = desc_element.get_text('\n', strip=True)
+                                # 3つ以上連続する無駄な改行をすっきり整形
+                                cleaned_desc = re.sub(r'\n{3,}', '\n\n', raw_text)
+                    except Exception as e:
+                        cleaned_desc = f"（通信エラーにより取得失敗: {str(e)}）"
+                
+                # 取得した紹介文をプロンプト用に積み上げる
+                descriptions_summary += f"■人気商品{i+1}: {item_name}\n【紹介文】:\n{cleaned_desc}\n\n"
+                
+            # ChatGPTやGeminiにそのまま貼り付けられる完成形プロンプトを組み立て
+            final_desc_prompt = f"""あなたはハンドメイドマーケット（Creemaやminne）で月商100万円以上を売り上げるトップクリエイターであり、お客様の心を動かすWEBライティングの専門家です。
 
 以下の【分析対象：売れている商品の紹介文一覧】と【私の作品情報】を徹底的に分析し、お客様が思わず欲しくなる最高の「作品紹介文（商品説明文）」を作成するためのデータを抽出し、さらに紹介文を3パターン提案してください。
 
@@ -753,7 +751,7 @@ if 'candidate_items' in locals() and not candidate_items.empty:
 
 ⚠️【紹介文に必ず入れる必須要素】：
 1. **購入検討者が抱えている「悩みや願望」の深い掘り下げ**
-   （ただの表面的な悩みではなく、「夕方になると重だるくて、周りに優しくできない」「健康グッズはオバサンっぽくて着けたくない」「不器用だから毎朝ブレスレットを着けるだけで爪が痛む・遅刻しそうになる」など、日常のリアルな葛藤やイライラに共感する文章にしてください）
+   （ただの表面的な悩みではなく、「夕方になると重だだるくて、周りに優しくできない」「健康グッズはオバサンっぽくて着けたくない」「不器用だから毎朝ブレスレットを着けるだけで爪が痛む・遅刻しそうになる」など、日常のリアルな葛藤やイライラに共感する文章にしてください）
 
 2. **この商品を手に入れることで、お客様が到達する「最高の未来（ベネフィットとその結末）」**
    （「見るたびに癒される」の先の【その結果、人生がどう変わるか】まで想像力を膨らませてください。例：手元を見るたびに心に余裕が生まれる、身体がラクになることで一日中笑顔でいられて自分を好きになれるなど）
@@ -763,59 +761,54 @@ if 'candidate_items' in locals() and not candidate_items.empty:
 
 4. **人気商品の紹介文から学んだ「売れる構成とキーワード」**
 
-### ３. 検索対策キーワード一覧（文末に配置）
+### 3. 検索対策キーワード一覧（文末に配置）
 * この商品をCreemaやminneで検索してもらうために、ハッシュタグや検索窓に入力されやすいキーワードを20個以上、スペース区切りでずらりと一覧化してください。
 """
 
-   # 枠のコードを消して、中身の文字とテキストエリアだけを残します
-    st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
-    st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
-    
- st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
-    st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
-    
-    # 1. まずはテキストエリアを表示（valueの中身が final_desc_prompt になっているか確認）
-    st.text_area("以下の文章を丸ごとコピーしてください：", value=final_desc_prompt, height=500, key="desc_prompt_area")
-    
-    # 2. 【ここが原因！】JavaScriptに渡すために文字を安全に変換する処理
-    # ※ この行が st.text_area のすぐ下に正しく入っている必要があります
-    js_safe_prompt = final_desc_prompt.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
-    
-    # 3. コピーボタンのHTML
-    copy_button_html = f"""
-    <div style="margin-top: -10px; margin-bottom: 20px;">
-        <button id="copy-btn" style="
-            background-color: #FF4B4B; 
-            color: white; 
-            border: none; 
-            padding: 8px 16px; 
-            font-size: 14px; 
-            font-weight: bold;
-            border-radius: 4px; 
-            cursor: pointer;
-            transition: background-color 0.3s;
-            width: 100%;
-        ">📋 このプロンプトをワンクリックでコピーする</button>
-    </div>
-
-    <script>
-    document.getElementById('copy-btn').addEventListener('click', function() {{
-        const textToCopy = `{js_safe_prompt}`;
+        # テキストエリアとボタンの表示
+        st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
+        st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
         
-        navigator.clipboard.writeText(textToCopy).then(function() {{
-            const btn = document.getElementById('copy-btn');
-            btn.innerText = '✅ コピーが完了しました！';
-            btn.style.backgroundColor = '#28a745';
+        st.text_area("以下の文章を丸ごとコピーしてください：", value=final_desc_prompt, height=500, key="desc_prompt_area")
+        
+        # JavaScript用安全変換
+        js_safe_prompt = final_desc_prompt.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+        
+        # コピーボタンのHTML
+        copy_button_html = f"""
+        <div style="margin-top: -10px; margin-bottom: 20px;">
+            <button id="copy-btn" style="
+                background-color: #FF4B4B; 
+                color: white; 
+                border: none; 
+                padding: 8px 16px; 
+                font-size: 14px; 
+                font-weight: bold;
+                border-radius: 4px; 
+                cursor: pointer;
+                transition: background-color 0.3s;
+                width: 100%;
+            ">📋 このプロンプトをワンクリックでコピーする</button>
+        </div>
+
+        <script>
+        document.getElementById('copy-btn').addEventListener('click', function() {{
+            const textToCopy = `{js_safe_prompt}`;
             
-            setTimeout(function() {{
-                btn.innerText = '📋 このプロンプトをワンクリックでコピーする';
-                btn.style.backgroundColor = '#FF4B4B';
-            }}, 2000);
-        }}).catch(function(err) {{
-            alert('コピーに失敗しました。テキストエリアから直接コピーしてください。');
+            navigator.clipboard.writeText(textToCopy).then(function() {{
+                const btn = document.getElementById('copy-btn');
+                btn.innerText = '✅ コピーが完了しました！';
+                btn.style.backgroundColor = '#28a745';
+                
+                setTimeout(function() {{
+                    btn.innerText = '📋 このプロンプトをワンクリックでコピーする';
+                    btn.style.backgroundColor = '#FF4B4B';
+                }}, 2000);
+            }}).catch(function(err) {{
+                alert('コピーに失敗しました。テキストエリアから直接コピーしてください。');
+            }});
         }});
-    }});
-    </script>
-    """
-    
-    st.components.v1.html(copy_button_html, height=50)
+        </script>
+        """
+        
+        st.components.v1.html(copy_button_html, height=50)
