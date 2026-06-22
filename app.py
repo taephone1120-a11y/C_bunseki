@@ -771,4 +771,48 @@ if 'candidate_items' in locals() and not candidate_items.empty:
     st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
     st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
     
+    # 1. まずはテキストエリアを表示（valueの中身が final_desc_prompt になっているか確認）
     st.text_area("以下の文章を丸ごとコピーしてください：", value=final_desc_prompt, height=500, key="desc_prompt_area")
+    
+    # 2. 【ここが原因！】JavaScriptに渡すために文字を安全に変換する処理
+    # ※ この行が st.text_area のすぐ下に正しく入っている必要があります
+    js_safe_prompt = final_desc_prompt.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+    
+    # 3. コピーボタンのHTML
+    copy_button_html = f"""
+    <div style="margin-top: -10px; margin-bottom: 20px;">
+        <button id="copy-btn" style="
+            background-color: #FF4B4B; 
+            color: white; 
+            border: none; 
+            padding: 8px 16px; 
+            font-size: 14px; 
+            font-weight: bold;
+            border-radius: 4px; 
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
+        ">📋 このプロンプトをワンクリックでコピーする</button>
+    </div>
+
+    <script>
+    document.getElementById('copy-btn').addEventListener('click', function() {{
+        const textToCopy = `{js_safe_prompt}`;
+        
+        navigator.clipboard.writeText(textToCopy).then(function() {{
+            const btn = document.getElementById('copy-btn');
+            btn.innerText = '✅ コピーが完了しました！';
+            btn.style.backgroundColor = '#28a745';
+            
+            setTimeout(function() {{
+                btn.innerText = '📋 このプロンプトをワンクリックでコピーする';
+                btn.style.backgroundColor = '#FF4B4B';
+            }}, 2000);
+        }}).catch(function(err) {{
+            alert('コピーに失敗しました。テキストエリアから直接コピーしてください。');
+        }});
+    }});
+    </script>
+    """
+    
+    st.components.v1.html(copy_button_html, height=50)
