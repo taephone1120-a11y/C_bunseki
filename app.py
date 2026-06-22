@@ -662,20 +662,22 @@ if 'candidate_items' in locals() and not candidate_items.empty:
     st.write("---") # 区切り線
     st.subheader("✍️ 作品紹介文（説明文）のプロンプト作成")
 
-# 紹介文用のタイトル入力欄
-my_product_title = st.text_input(
-    "🏷️ 出品する作品のタイトル（決まっている場合や、上記で決めたタイトルを入力してください）",
-    value="【はだかのお守り】ラピスラズリのワイヤーラップリング / 天然石指輪",
-    help="AIが紹介文を作成する際に、このタイトルとの整合性を意識して文章を作ります。"
-)
+    # 紹介文用のタイトル入力欄
+    my_product_title = st.text_input(
+        "🏷️ 出品する作品のタイトル（決まっている場合や、上記で決めたタイトルを入力してください）",
+        value="【はだかのお守り】ラピスラズリのワイヤーラップリング / 天然石指輪", # ※デフォルト値はお好みで変更してください
+        help="AIが紹介文を作成する際に、このタイトルとの整合性を意識して文章を作ります。"
+    )
 
-# 紹介文生成用のボタン
-generate_desc_btn = st.button("🚀 作品紹介文提案のプロンプト作成", type="primary")
+    # ⚠️ ここに、もし「私の作品の説明・特徴」を入力する st.text_area("my_work_description") などがあれば、それもここに配置してください
 
-if generate_desc_btn:
-    with st.spinner("🕵️‍♂️ 市場10選の作品ページから、リアルタイムに紹介文を読み込んでいます（数秒かかります）..."):
-        
-        descriptions_summary = ""
+    # 紹介文生成用のボタン（赤色に統一！）
+    generate_desc_btn = st.button("🚀 市場10選を分析して作品紹介文を提案してもらう", type="primary")
+
+    if generate_desc_btn:
+        with st.spinner("🕵️‍♂️ 市場10選の作品ページから、リアルタイムに紹介文を読み込んでいます（数秒かかります）..."):
+            
+            descriptions_summary = ""
         
         # 10件の商品を1つずつループ処理
         for i, row in candidate_items.iterrows():
