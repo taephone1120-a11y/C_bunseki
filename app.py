@@ -654,7 +654,7 @@ if st.session_state.raw_data:
             # コピーしやすいように大きなテキストエリアで表示
             st.text_area("以下の文章を丸ごとコピーしてください：", value=final_prompt, height=450)
             st.markdown('</div>', unsafe_allow_html=True)
-
+if 'candidate_items' in locals() and not candidate_items.empty:
 # =================================================================
 # ✍️ ボタン2: 市場10選を分析して作品紹介文を提案してもらう
 # =================================================================
