@@ -133,7 +133,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                 
                 # 商品名が一致した場合のみ、そのブロックのレビュー日を探す
                 if has_target_item:
-                    # 💡 作家からの返信日（reply）と混同しないよう、お客様のレビュー声（voice）の枠内から日付をピンポイント抽出
+                    # 作家からの返信日（reply）と混同しないよう、お客様のレビュー声（voice）の枠内から日付をピンポイント抽出
                     voice_date_tag = block.select_one(".p-creator-rating-rating__voice .p-creator-rating-rating__date")
                     if voice_date_tag:
                         # ( 2026.06.20 ) などの文字列から日付部分だけを抽出
@@ -143,22 +143,21 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                             review_date = datetime.strptime(date_str, "%Y.%m.%d")
                             
                             # ルール2: 3ヶ月以内の日付のみを対象とする
-                           if review_date >= three_months_ago:
-    # 💡 すでに同じ日付（年月日）がリストに存在しない場合のみ追加する
-    if review_date not in all_matched_dates:
-        all_matched_dates.append(review_date)
-    page_has_valid_date = True
+                            if review_date >= three_months_ago:
+                                # 💡 【重複排除ルール】すでに同じ日付（年月日）がリストに存在しない場合のみ追加
+                                if review_date not in all_matched_dates:
+                                    all_matched_dates.append(review_date)
+                                page_has_valid_date = True
                                 
-                                # 必要件数（1人なら1件、2人なら2件、3人以上なら3件）に達したらページ内の探索を即終了
+                                # 必要件数に達したらページ内の探索を即終了
                                 if len(all_matched_dates) >= required_count:
                                     break
             
-            # 💡 【重要】必要件数に達している場合は、次のページに進まずここで終了
+            # 必要件数に達している場合は、次のページに進まずここで終了
             if len(all_matched_dates) >= required_count:
                 break
                 
             # ルール3: ページ内の一番古い日付が3ヶ月以上前であれば、これ以上ページをめくらず終了
-            # ページ全体の全てのレビュー日付をチェックして判断
             all_page_dates = []
             for date_tag in soup.select(".p-creator-rating-rating__date"):
                 d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
@@ -177,7 +176,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             else:
                 current_url = f"{base_rating_url}?page={current_page}"
                 
-            time.sleep(0.1)  # サーバーに負荷をかけないための待機
+            time.sleep(0.1)
             
         except:
             break
