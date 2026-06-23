@@ -144,10 +144,10 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                             
                             # ルール2: 3ヶ月以内の日付のみを対象とする
                            if review_date >= three_months_ago:
-    　　　　　　　　　　　　　　# 💡 すでに同じ日付（年月日）がリストに存在しない場合のみ追加する
-  　　　　　　　　　　　　　　  if review_date not in all_matched_dates:
-　　　　　　　　　　　　　　        all_matched_dates.append(review_date)
-　　　　　　　　　　　　　　    page_has_valid_date = True
+    # 💡 すでに同じ日付（年月日）がリストに存在しない場合のみ追加する
+    if review_date not in all_matched_dates:
+        all_matched_dates.append(review_date)
+    page_has_valid_date = True
                                 
                                 # 必要件数（1人なら1件、2人なら2件、3人以上なら3件）に達したらページ内の探索を即終了
                                 if len(all_matched_dates) >= required_count:
