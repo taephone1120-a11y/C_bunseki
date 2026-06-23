@@ -109,6 +109,10 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
     if required_count <= 0:
         return []
 
+    # 💡 比較元となる商品ページのタイトルから前後の空白・改行を削り、
+    # さらに連続する空白（全角・半角）を半角スペース1つに統一する
+    clean_target = " ".join(target_title.strip().split())
+
     while current_url and current_page <= max_pages_to_search:
         try:
             res = requests.get(current_url, headers=headers, timeout=8)
@@ -120,16 +124,22 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             if not blocks:
                 break
             
-            page_has_valid_date = False
-            
+            # カラム（左右）の順番に関係なく、このページ内の対象データを一度すべて集める
             for block in blocks:
-                # ブロック内の商品名リンクをすべて取得
                 title_tags = block.select(".p-creator-rating-rating__title a")
-                has_target_item = any(t.text.strip() == target_title for t in title_tags)
+                
+                # 💡 【完全一致ルール】
+                has_target_item = False
+                for t in title_tags:
+                    # レビュー側のタイトルからも、データ上の改行や余分な空白を同じルールで削る
+                    clean_review_title = " ".join(t.text.strip().split())
+                    
+                    # 💡 部分一致ではなく、完全に一致しているか（==）で判定
+                    if clean_review_title == clean_target:
+                        has_target_item = True
+                        break
                 
                 if has_target_item:
-                    # 💡 【ここを徹底修正！】
-                    # 1つのブロック内にある「すべてのお客さんの声枠（voice）」をループで1つずつ精査する
                     voices = block.select(".p-creator-rating-rating__voice")
                     for voice in voices:
                         voice_date_tag = voice.select_one(".p-creator-rating-rating__date")
@@ -139,17 +149,15 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                                 date_str = date_match.group(1)
                                 review_date = datetime.strptime(date_str, "%Y.%m.%d")
                                 
+                                # 3ヶ月以内の日付であれば、一旦重複なくすべて回収バッグに入れる
                                 if review_date >= three_months_ago:
-                                    # 重複排除ルール（同じ日に複数レビューがあっても1カウントにする）
                                     if review_date not in all_matched_dates:
                                         all_matched_dates.append(review_date)
-                                    page_has_valid_date = True
-                    
-                    # 💡 1つのブロック内の全voiceを調べ終えた後、目標数（最大3件）に達していれば、次のブロック（過去データ）へ進むのをやめて即終了する
-                    if len(all_matched_dates) >= required_count:
-                        break
             
-            # 必要件数に達している場合は、次のページに進まずここで終了
+            # ページ内の全スキャンが終わった時点で、集まった日付を一度最新順に並び替える
+            all_matched_dates.sort(reverse=True)
+            
+            # すでに必要な別々の日付（件数）が確保できていれば、次ページに進まず終了
             if len(all_matched_dates) >= required_count:
                 break
                 
@@ -176,7 +184,6 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
         except:
             break
             
-    # 全ページから集まった日付を最新順にソートして、必要な件数（required_count）だけ切り出す
     all_matched_dates.sort(reverse=True)
     return [d.strftime("%Y.%m.%d") for d in all_matched_dates[:required_count]]
     
