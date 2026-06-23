@@ -106,6 +106,10 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
     current_url = base_rating_url
     max_pages_to_search = 5  
 
+    # ルール1: 購入者数がない（0以下）の場合は処理をパスして即終了
+    if required_count <= 0:
+        return []
+
     while current_url and current_page <= max_pages_to_search:
         try:
             res = requests.get(current_url, headers=headers, timeout=8)
@@ -113,55 +117,74 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                 break
             
             soup = BeautifulSoup(res.content, "html.parser")
+            
+            # 商品ごとの大きな枠（ブロック）を取得
             blocks = soup.select(".p-creator-rating-rating__content")
             if not blocks:
                 break
             
             page_has_valid_date = False
+            
+            # ページ内にある各商品レビューブロックを1つずつチェック
             for block in blocks:
-                
-                # 💡 【修正のポイント1】
-                # 1つのレビュー枠（block）の中に、ターゲットの作品名が含まれているかチェック
-                # まとめ買いの場合、複数の <a> タグが存在するので、そのどれかに合致すればOK
+                # ブロック内の商品名リンクをすべて取得（まとめ買い対策）
                 title_tags = block.select(".p-creator-rating-rating__title a")
                 has_target_item = any(t.text.strip() == target_title for t in title_tags)
                 
+                # 商品名が一致した場合のみ、そのブロックのレビュー日を探す
                 if has_target_item:
-                    # 💡 【修正のポイント2】
-                    # そのレビュー枠の「投稿日」を1つだけ取得する
+                    # 💡 作家からの返信日（reply）と混同しないよう、お客様のレビュー声（voice）の枠内から日付をピンポイント抽出
                     voice_date_tag = block.select_one(".p-creator-rating-rating__voice .p-creator-rating-rating__date")
                     if voice_date_tag:
+                        # ( 2026.06.20 ) などの文字列から日付部分だけを抽出
                         date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", voice_date_tag.text)
                         if date_match:
                             date_str = date_match.group(1)
                             review_date = datetime.strptime(date_str, "%Y.%m.%d")
                             
+                            # ルール2: 3ヶ月以内の日付のみを対象とする
                             if review_date >= three_months_ago:
                                 all_matched_dates.append(review_date)
                                 page_has_valid_date = True
                                 
-                                # 💡 【修正のポイント3】
-                                # このレビュー枠（同じ日付）からの回収はこれで終了！
-                                # 重複を防ぐため、次の別のお客さんのレビュー枠（block）の調査に進みます
+                                # 必要件数（1人なら1件、2人なら2件、3人以上なら3件）に達したらページ内の探索を即終了
                                 if len(all_matched_dates) >= required_count:
                                     break
             
-            if not page_has_valid_date and current_page > 1:
+            # 💡 【重要】必要件数に達している場合は、次のページに進まずここで終了
+            if len(all_matched_dates) >= required_count:
                 break
+                
+            # ルール3: ページ内の一番古い日付が3ヶ月以上前であれば、これ以上ページをめくらず終了
+            # ページ全体の全てのレビュー日付をチェックして判断
+            all_page_dates = []
+            for date_tag in soup.select(".p-creator-rating-rating__date"):
+                d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                if d_match:
+                    all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
+            
+            if all_page_dates:
+                oldest_date_on_page = min(all_page_dates)
+                if oldest_date_on_page < three_months_ago:
+                    break
 
+            # 目標数に達していなければ次のページ（page=2...）へ進む
             current_page += 1
             if "?" in base_rating_url:
                 current_url = f"{base_rating_url}&page={current_page}"
             else:
                 current_url = f"{base_rating_url}?page={current_page}"
                 
-            time.sleep(0.1)  
+            time.sleep(0.1)  # サーバーに負荷をかけないための待機
             
         except:
             break
             
+    # 取得した日付を新しい順（降順）に並び替え
     all_matched_dates.sort(reverse=True)
-    return [d.strftime("%Y.%m.%d") for d in all_matched_dates]
+    
+    # 呼び出し元が必要とする件数分だけカットして文字列のリストで返す
+    return [d.strftime("%Y.%m.%d") for d in all_matched_dates[:required_count]]
     
 # =============================================
 #   単一商品を詳細解析
