@@ -121,16 +121,20 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             for block in blocks:
                 title_tag = block.select_one(".p-creator-rating-rating__title a")
                 if title_tag and title_tag.text.strip() == target_title:
-                    voice_date_tag = block.select_one(".p-creator-rating-rating__voice .p-creator-rating-rating__date")
-                    if voice_date_tag:
-                        date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", voice_date_tag.text)
-                        if date_match:
-                            date_str = date_match.group(1)
-                            review_date = datetime.strptime(date_str, "%Y.%m.%d")
-                            
-                            if review_date >= three_months_ago:
-                                all_matched_dates.append(review_date)
-                                page_has_valid_date = True
+                    
+                    # 💡 【修正のポイント】商品ブロック内にある「全てのレビュー」をループで取得する
+                    voices = block.select(".p-creator-rating-rating__voice")
+                    for voice in voices:
+                        voice_date_tag = voice.select_one(".p-creator-rating-rating__date")
+                        if voice_date_tag:
+                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", voice_date_tag.text)
+                            if date_match:
+                                date_str = date_match.group(1)
+                                review_date = datetime.strptime(date_str, "%Y.%m.%d")
+                                
+                                if review_date >= three_months_ago:
+                                    all_matched_dates.append(review_date)
+                                    page_has_valid_date = True
             
             if not page_has_valid_date and current_page > 1:
                 break
@@ -763,6 +767,7 @@ if 'candidate_items' in locals() and not candidate_items.empty:
 
 ### 3. 検索対策キーワード一覧（文末に配置）
 * この商品をCreemaやminneで検索してもらうために、ハッシュタグや検索窓に入力されやすいキーワードを20個以上、スペース区切りでずらりと一覧化してください。
+* ⚠️【最重要ルール】：出力するキーワード一覧からは、上記の【私の作品情報】の「作品のタイトル」および「作品の説明・特徴・こだわり」の本文中に【すでに含まれている単語・表現】を絶対に徹底的に排除（除外）してください。本文にない「新しい関連キーワード」「類語」「言い換え表現」「ターゲット層の属性」「季節・シーンの言葉」だけで構成してください。
 """
 
         # テキストエリアとボタンの表示
