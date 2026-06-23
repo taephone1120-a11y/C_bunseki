@@ -142,9 +142,9 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                             date_str = date_match.group(1)
                             review_date = datetime.strptime(date_str, "%Y.%m.%d")
                             
-                            # ルール2: 3ヶ月以内の日付のみを対象とする
+                            # 3ヶ月以内の日付のみを対象とする
                             if review_date >= three_months_ago:
-                                # 💡 【重複排除ルール】すでに同じ日付（年月日）がリストに存在しない場合のみ追加
+                                # 【重複排除ルール】すでに同じ日付（年月日）がリストに存在しない場合のみ追加
                                 if review_date not in all_matched_dates:
                                     all_matched_dates.append(review_date)
                                 page_has_valid_date = True
@@ -157,16 +157,19 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             if len(all_matched_dates) >= required_count:
                 break
                 
-            # ルール3: ページ内の一番古い日付が3ヶ月以上前であれば、これ以上ページをめくらず終了
+            # 💡 【ここを修正！】
+            # このページにある「全ての日付」をリストに集める
             all_page_dates = []
             for date_tag in soup.select(".p-creator-rating-rating__date"):
                 d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
                 if d_match:
                     all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
             
+            # 集めた日付の中から「一番最近（最新）の日付」を割り出す
             if all_page_dates:
-                oldest_date_on_page = min(all_page_dates)
-                if oldest_date_on_page < three_months_ago:
+                newest_date_on_page = max(all_page_dates)
+                # もしそのページで一番新しい日付すら3ヶ月以上前なら、これ以上めくっても無駄なので終了
+                if newest_date_on_page < three_months_ago:
                     break
 
             # 目標数に達していなければ次のページ（page=2...）へ進む
