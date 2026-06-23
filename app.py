@@ -119,22 +119,32 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             
             page_has_valid_date = False
             for block in blocks:
-                title_tag = block.select_one(".p-creator-rating-rating__title a")
-                if title_tag and title_tag.text.strip() == target_title:
-                    
-                    # 💡 【修正のポイント】商品ブロック内にある「全てのレビュー」をループで取得する
-                    voices = block.select(".p-creator-rating-rating__voice")
-                    for voice in voices:
-                        voice_date_tag = voice.select_one(".p-creator-rating-rating__date")
-                        if voice_date_tag:
-                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", voice_date_tag.text)
-                            if date_match:
-                                date_str = date_match.group(1)
-                                review_date = datetime.strptime(date_str, "%Y.%m.%d")
+                
+                # 💡 【修正のポイント1】
+                # 1つのレビュー枠（block）の中に、ターゲットの作品名が含まれているかチェック
+                # まとめ買いの場合、複数の <a> タグが存在するので、そのどれかに合致すればOK
+                title_tags = block.select(".p-creator-rating-rating__title a")
+                has_target_item = any(t.text.strip() == target_title for t in title_tags)
+                
+                if has_target_item:
+                    # 💡 【修正のポイント2】
+                    # そのレビュー枠の「投稿日」を1つだけ取得する
+                    voice_date_tag = block.select_one(".p-creator-rating-rating__voice .p-creator-rating-rating__date")
+                    if voice_date_tag:
+                        date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", voice_date_tag.text)
+                        if date_match:
+                            date_str = date_match.group(1)
+                            review_date = datetime.strptime(date_str, "%Y.%m.%d")
+                            
+                            if review_date >= three_months_ago:
+                                all_matched_dates.append(review_date)
+                                page_has_valid_date = True
                                 
-                                if review_date >= three_months_ago:
-                                    all_matched_dates.append(review_date)
-                                    page_has_valid_date = True
+                                # 💡 【修正のポイント3】
+                                # このレビュー枠（同じ日付）からの回収はこれで終了！
+                                # 重複を防ぐため、次の別のお客さんのレビュー枠（block）の調査に進みます
+                                if len(all_matched_dates) >= required_count:
+                                    break
             
             if not page_has_valid_date and current_page > 1:
                 break
@@ -152,7 +162,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             
     all_matched_dates.sort(reverse=True)
     return [d.strftime("%Y.%m.%d") for d in all_matched_dates]
-
+    
 # =============================================
 #   単一商品を詳細解析
 # =============================================
