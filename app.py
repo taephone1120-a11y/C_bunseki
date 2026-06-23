@@ -109,8 +109,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
     if required_count <= 0:
         return []
 
-    # 💡 比較元となる商品ページのタイトルから前後の空白・改行を削り、
-    # さらに連続する空白（全角・半角）を半角スペース1つに統一する
+    # 比較元となる商品ページのタイトルから前後の空白・改行を削り、空白を半角スペース1つに統一
     clean_target = " ".join(target_title.strip().split())
 
     while current_url and current_page <= max_pages_to_search:
@@ -124,22 +123,19 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
             if not blocks:
                 break
             
-            # カラム（左右）の順番に関係なく、このページ内の対象データを一度すべて集める
+            # ページ内の対象データを一度すべて集める
             for block in blocks:
                 title_tags = block.select(".p-creator-rating-rating__title a")
                 
-                # 💡 【完全一致ルール】
                 has_target_item = False
                 for t in title_tags:
-                    # レビュー側のタイトルからも、データ上の改行や余分な空白を同じルールで削る
                     clean_review_title = " ".join(t.text.strip().split())
-                    
-                    # 💡 部分一致ではなく、完全に一致しているか（==）で判定
                     if clean_review_title == clean_target:
                         has_target_item = True
                         break
                 
                 if has_target_item:
+                    # 💡 商品ブロックの中にある「別々のレビュー（voice）」を1つずつループ処理
                     voices = block.select(".p-creator-rating-rating__voice")
                     for voice in voices:
                         voice_date_tag = voice.select_one(".p-creator-rating-rating__date")
@@ -149,15 +145,16 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
                                 date_str = date_match.group(1)
                                 review_date = datetime.strptime(date_str, "%Y.%m.%d")
                                 
-                                # 3ヶ月以内の日付であれば、一旦重複なくすべて回収バッグに入れる
                                 if review_date >= three_months_ago:
-                                    if review_date not in all_matched_dates:
-                                        all_matched_dates.append(review_date)
+                                    # 💡 【ここを修正！】
+                                    # 「すでに同じ日付があるか」のチェックを削除しました。
+                                    # これにより、別々のレビューであれば同じ日付でも正常に2回、3回と追加されます。
+                                    all_matched_dates.append(review_date)
             
             # ページ内の全スキャンが終わった時点で、集まった日付を一度最新順に並び替える
             all_matched_dates.sort(reverse=True)
             
-            # すでに必要な別々の日付（件数）が確保できていれば、次ページに進まず終了
+            # すでに必要な件数（required_count）が確保できていれば、次ページに進まず終了
             if len(all_matched_dates) >= required_count:
                 break
                 
@@ -184,6 +181,7 @@ def fetch_recent_sales_dates(base_rating_url, target_title, required_count, head
         except:
             break
             
+    # 全ページから集まったすべての日付を、最終的に新しい順に並び替えて、必要な件数だけ切り出す
     all_matched_dates.sort(reverse=True)
     return [d.strftime("%Y.%m.%d") for d in all_matched_dates[:required_count]]
     
