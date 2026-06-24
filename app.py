@@ -687,14 +687,22 @@ if "final_df" in locals() and final_df is not None and not final_df.empty:
     # =============================================
     # 🤖 👑 Gemini作品タイトル提案エリア (復活・修正部分)
     # =============================================
-    st.subheader("🙆 作品タイトルのプロンプト作成")
-st.write("市場の人気を参考に、タイトルや紹介文を作成します。")
+# session_state から検索結果を取り出す
+saved_candidate_items = st.session_state.get("candidate_items", None)
 
-st.caption(
-    "作品タイトルや紹介文の精度を上げるために、素材・サイズ・使用シーン・こだわりをできるだけ具体的に入力してください。"
-)
+# 検索結果がある場合だけ、タイトル・紹介文作成エリアを表示
+if saved_candidate_items is not None and not saved_candidate_items.empty:
 
-default_work_description = """商品名：
+    candidate_items = saved_candidate_items
+
+    st.subheader("🙆 作品タイトル・紹介文のプロンプト作成")
+    st.write("市場の人気を参考に、タイトルや紹介文を作成します。")
+
+    st.caption(
+        "作品タイトルや紹介文の精度を上げるために、カテゴリ・素材・サイズ・使いやすさ・使用シーン・こだわりをできるだけ具体的に入力してください。"
+    )
+
+    default_work_description = """商品名：
 例）帆布のトートバッグ／名入れできる木製キーホルダー／刺繍のブローチ／結婚式のウェルカムボード
 
 商品カテゴリ：
@@ -740,12 +748,17 @@ default_work_description = """商品名：
 例）毎日の暮らしの中で、使うたびに少し気分が上がるような作品を目指して作りました。
 """
 
-my_work_description = st.text_area(
-    "📝 あなたの作品の説明・特徴・こだわり",
-    value=default_work_description,
-    height=360,
-    help="分かる範囲で入力してください。空欄があっても大丈夫です。"
-)
+    my_work_description = st.text_area(
+        "📝 あなたの作品の説明・特徴・こだわり",
+        value=default_work_description,
+        height=420,
+        help="分かる範囲で入力してください。空欄があっても大丈夫です。"
+    )
+
+    # ここから下に、
+    # 「🚀 検索上位を狙うタイトルプロンプトを作成」ボタン
+    # 「✍️ 作品紹介文（説明文）のプロンプト作成」
+    # を入れる
         
 # =================================================================
 # 🛍️ ボタン1: 市場10選を分析してタイトルを提案してもらう
