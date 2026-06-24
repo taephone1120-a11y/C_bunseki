@@ -1018,78 +1018,88 @@ import json
 # =================================================================
 # ✍️ ボタン2: 市場10選を分析して作品紹介文を提案してもらう
 # =================================================================
-st.write("---")  # 区切り線
-st.subheader("✍️ 作品紹介文（説明文）のプロンプト作成")
 
-# 紹介文用のタイトル入力欄
-my_product_title = st.text_input(
-    "🏷️ 出品する作品のタイトル（決まっている場合や、上記で決めたタイトルを入力してください）",
-    value="",
-    help="AIが紹介文を作成する際に、このタイトルとの整合性を意識して文章を作ります。"
-)
+saved_candidate_items = st.session_state.get("candidate_items", None)
 
-# 紹介文生成用のボタン
-generate_desc_btn = st.button(
-    "🚀 市場10選を分析して作品紹介文プロンプトを作成",
-    type="primary"
-)
+if saved_candidate_items is not None and not saved_candidate_items.empty:
 
-if generate_desc_btn:
-    with st.spinner("🕵️‍♂️ 市場10選の作品ページから、紹介文を読み込んでいます（数秒かかります）..."):
+    candidate_items = saved_candidate_items
 
-        descriptions_summary = ""
+    st.write("---")  # 区切り線
+    st.subheader("✍️ 作品紹介文（説明文）のプロンプト作成")
 
-        # 10件の商品を1つずつループ処理
-        for display_no, (_, row) in enumerate(candidate_items.iterrows(), start=1):
-            item_name = row.get("商品名", "商品名不明")
+    # 紹介文用のタイトル入力欄
+    my_product_title = st.text_input(
+        "🏷️ 出品する作品のタイトル（決まっている場合や、上記で決めたタイトルを入力してください）",
+        value="",
+        help="AIが紹介文を作成する際に、このタイトルとの整合性を意識して文章を作ります。",
+        key="my_product_title_input"
+    )
 
-            # データフレームにURLが入っている列を探す
-            item_url = row.get(
-                "商品URL",
-                row.get(
-                    "URL",
+    # 紹介文生成用のボタン
+    generate_desc_btn = st.button(
+        "🚀 市場10選を分析して作品紹介文プロンプトを作成",
+        type="primary",
+        key="generate_desc_prompt_btn"
+    )
+
+    if generate_desc_btn:
+        with st.spinner("🕵️‍♂️ 市場10選の作品ページから、紹介文を読み込んでいます（数秒かかります）..."):
+
+            descriptions_summary = ""
+
+            # 10件の商品を1つずつループ処理
+            for display_no, (_, row) in enumerate(candidate_items.iterrows(), start=1):
+                item_name = row.get("商品名", "商品名不明")
+
+                # データフレームにURLが入っている列を探す
+                item_url = row.get(
+                    "商品URL",
                     row.get(
-                        "url",
-                        row.get("作品URL", None)
+                        "URL",
+                        row.get(
+                            "url",
+                            row.get("作品URL", None)
+                        )
                     )
                 )
-            )
 
-            # URLが相対パスだった場合の対策
-            if item_url and isinstance(item_url, str) and item_url.startswith("/"):
-                item_url = f"https://www.creema.jp{item_url}"
+                # もしURLが相対パスだった場合の対策
+                if item_url and isinstance(item_url, str) and item_url.startswith("/"):
+                    item_url = f"https://www.creema.jp{item_url}"
 
-            cleaned_desc = "（紹介文の取得に失敗しました）"
+                cleaned_desc = "（紹介文の取得に失敗しました）"
 
-            # URLが正しく取得できている場合、その場でCreemaのページを読みにいく
-            if item_url:
-                try:
-                    headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                      "Chrome/120.0.0.0 Safari/537.36"
-                    }
+                # URLが正しく取得できている場合、その場でCreemaのページを読みにいく
+                if item_url:
+                    try:
+                        headers = {
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                          "Chrome/120.0.0.0 Safari/537.36"
+                        }
 
-                    response = requests.get(item_url, headers=headers, timeout=10)
+                        response = requests.get(item_url, headers=headers, timeout=10)
 
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.text, "html.parser")
+                        if response.status_code == 200:
+                            soup = BeautifulSoup(response.text, "html.parser")
 
-                        # Creemaの紹介文の目印を探す
-                        desc_element = soup.find("div", class_="p-item-detail-description")
+                            desc_element = soup.find("div", class_="p-item-detail-description")
 
-                        if desc_element:
-                            raw_text = desc_element.get_text("\n", strip=True)
-                            cleaned_desc = re.sub(r"\n{3,}", "\n\n", raw_text)
+                            if desc_element:
+                                raw_text = desc_element.get_text("\n", strip=True)
+                                cleaned_desc = re.sub(r"\n{3,}", "\n\n", raw_text)
 
-                except Exception as e:
-                    cleaned_desc = f"（通信エラーにより取得失敗: {str(e)}）"
+                    except Exception as e:
+                        cleaned_desc = f"（通信エラーにより取得失敗: {str(e)}）"
 
-            # 取得した紹介文をプロンプト用に積み上げる
-            descriptions_summary += (
-                f"■人気商品{display_no}: {item_name}\n"
-                f"【紹介文】:\n{cleaned_desc}\n\n"
-            )
+                # 取得した紹介文をプロンプト用に積み上げる
+                descriptions_summary += (
+                    f"■人気商品{display_no}: {item_name}\n"
+                    f"【紹介文】:\n{cleaned_desc}\n\n"
+                )
+
+            # ここから下に final_desc_prompt = textwrap.dedent(f"""... を続ける
 
         # ChatGPTやGeminiにそのまま貼り付けられる完成形プロンプト
         final_desc_prompt = textwrap.dedent(f"""
