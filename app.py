@@ -113,7 +113,7 @@ def scrape_creema_fast(start_url, max_num):
     # ----------------------------------------------------
     # 💡 【完全内蔵】1件詳細解析用パーツ
     # ----------------------------------------------------
-def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
+    def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
         try:
             link = item_data["link"]
             creator = item_data["creator"]
