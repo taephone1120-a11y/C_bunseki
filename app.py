@@ -482,61 +482,77 @@ def convert_df_to_excel(df):
 
 
 # =============================================
-#    📊 データフィルタリングと画面表示
+#     📊 データフィルタリングと画面表示
 # =============================================
-# 💡 raw_data が存在し、かつ中身が空でない場合のみ処理を行うよう修正しました。
 if st.session_state.raw_data and len(st.session_state.raw_data) > 0:
     import pandas as pd
     import numpy as np
+    import re
     
     df_orig = pd.DataFrame(st.session_state.raw_data)
+    
+    # =============================================
+    # 🔄 [自動修復] もし英語のキー名でデータが来ていたら、正しい日本語列名に変換
+    # =============================================
+    rename_mapping = {
+        "artist_name": "作家名", "creator": "作家名", "creator_name": "作家名", "writer": "作家名",
+        "title": "商品名", "item_name": "商品名", "name": "商品名",
+        "price": "価格(円)", "price_yen": "価格(円)",
+        "url": "商品URL", "item_url": "商品URL",
+        "favorite": "お気に入り数", "like_count": "お気に入り数", "fav": "お気に入り数", "likes": "お気に入り数",
+        "buy_count": "購入者数", "sales_count": "購入者数", "buy_num": "購入者数",
+        "sales_date1": "直近販売日1", "sales_date2": "直近販売日2", "sales_date3": "直近販売日3",
+        "date1": "直近販売日1", "date2": "直近販売日2", "date3": "直近販売日3",
+        "total_review": "総評価数", "review_count": "総評価数", "rating_count": "総評価数", "reviews": "総評価数",
+        "recent_review": "直近1ヶ月の評価数", "recent_count": "直近1ヶ月の評価数", "recent_num": "直近1ヶ月の評価数",
+        "first_review": "一番初めの評価日", "first_date": "一番初めの評価日",
+        "description": "作品紹介文", "text": "作品紹介文", "intro": "作品紹介文"
+    }
+    df_orig = df_orig.rename(columns=rename_mapping)
+    
+    # 💡 どの名前にも引っかからなかった場合、Noneを回避するために最低限の空枠を作る
+    expected_cols = [
+        "作家名", "商品名", "価格(円)", "商品URL", "お気に入り数", "購入者数",
+        "直近販売日1", "直近販売日2", "直近販売日3", "総評価数", "直近1ヶ月の評価数", "一番初めの評価日", "作品紹介文"
+    ]
+    for col in expected_cols:
+        if col not in df_orig.columns:
+            df_orig[col] = "-"
+
     df_filter = df_orig.copy()
     
     def clean_purchase_count(val):
-        if pd.isna(val) or val == 0: return 0
+        if pd.isna(val) or val == 0 or val == "-": return 0
         val_str = str(val).strip()
         num_match = re.search(r"(\d+)", val_str)
         return int(num_match.group(1)) if num_match else 0
 
-# 💡 [超安全版] 必要な列が存在することを確認し、Noneやエラーを完全に防いで変換します
-    if "価格(円)" in df_filter.columns:
-        # 数字以外の文字（「円」やカンマなど）を完全に排除してから数値化
-        df_filter["_price_num"] = df_filter["価格(円)"].astype(str).str.replace(r"\D", "", regex=True)
-        df_filter["_price_num"] = pd.to_numeric(df_filter["_price_num"], errors='coerce').fillna(0).astype(int)
-    else:
-        df_filter["_price_num"] = 0
+    # 💡 数値データの安全クレンジング（Noneや文字列の混入を完全にガード）
+    df_filter["_price_num"] = df_filter["価格(円)"].astype(str).str.replace(r"\D", "", regex=True)
+    df_filter["_price_num"] = pd.to_numeric(df_filter["_price_num"], errors='coerce').fillna(0).astype(int)
 
-    if "購入者数" in df_filter.columns:
-        df_filter["_buy_num"] = df_filter["購入者数"].apply(clean_purchase_count)
-    else:
-        df_filter["_buy_num"] = 0
+    df_filter["_buy_num"] = df_filter["購入者数"].apply(clean_purchase_count)
 
-    if "総評価数" in df_filter.columns:
-        # Noneや「データなし」を考慮して安全に数値化
-        df_filter["_rev_num"] = df_filter["総評価数"].astype(str).str.replace(r"\D", "", regex=True)
-        df_filter["_rev_num"] = pd.to_numeric(df_filter["_rev_num"], errors='coerce').fillna(0).astype(int)
-    else:
-        df_filter["_rev_num"] = 0
+    df_filter["_rev_num"] = df_filter["総評価数"].astype(str).str.replace(r"\D", "", regex=True)
+    df_filter["_rev_num"] = pd.to_numeric(df_filter["_rev_num"], errors='coerce').fillna(0).astype(int)
 
-    if "直近1ヶ月の評価数" in df_filter.columns:
-        df_filter["_recent_num"] = df_filter["直近1ヶ月の評価数"].astype(str).str.replace(r"\D", "", regex=True)
-        df_filter["_recent_num"] = pd.to_numeric(df_filter["_recent_num"], errors='coerce').fillna(0).astype(int)
-    else:
-        df_filter["_recent_num"] = 0
+    df_filter["_recent_num"] = df_filter["直近1ヶ月の評価数"].astype(str).str.replace(r"\D", "", regex=True)
+    df_filter["_recent_num"] = pd.to_numeric(df_filter["_recent_num"], errors='coerce').fillna(0).astype(int)
 
-    # 元のデータ自体に None が混ざっている場合の表示用ガード
-    df_filter["価格(円)"] = df_filter.get("価格(円)", 0).fillna(0)
-    df_filter["総評価数"] = df_filter.get("総評価数", "0件").fillna("0件")
-    df_filter["直近1ヶ月の評価数"] = df_filter.get("直近1ヶ月の評価数", "0件").fillna("0件")
-    df_filter["お気に入り数"] = df_filter.get("お気に入り数", 0).fillna(0)
+    # 表示用に元の列の None を安全に穴埋め
+    df_filter["価格(円)"] = df_filter["価格(円)"].fillna("-")
+    df_filter["総評価数"] = df_filter["総評価数"].fillna("0件")
+    df_filter["直近1ヶ月の評価数"] = df_filter["直近1ヶ月の評価数"].fillna("0件")
+    df_filter["お気に入り数"] = df_filter["お気に入り数"].fillna(0)
+    df_filter["作家名"] = df_filter["作家名"].fillna("-")
+    df_filter["商品名"] = df_filter["商品名"].fillna("-")
+    df_filter["商品URL"] = df_filter["商品URL"].fillna("")
 
-    # 購入者数に応じた「直近販売日」のマスク（- への書き換え）処理
-    # 💡 該当する列が存在する場合のみ実行
+    # 購入者数に応じた「直近販売日」のマスク処理
     target_sales_cols = ["直近販売日1", "直近販売日2", "直近販売日3"]
-    if all(col in df_filter.columns for col in target_sales_cols):
-        df_filter.loc[df_filter["_buy_num"] == 0, target_sales_cols] = "-"
-        df_filter.loc[df_filter["_buy_num"] == 1, ["直近販売日2", "直近販売日3"]] = "-"
-        df_filter.loc[df_filter["_buy_num"] == 2, ["直近販売日3"]] = "-"
+    df_filter.loc[df_filter["_buy_num"] == 0, target_sales_cols] = "-"
+    df_filter.loc[df_filter["_buy_num"] == 1, ["直近販売日2", "直近販売日3"]] = "-"
+    df_filter.loc[df_filter["_buy_num"] == 2, ["直近販売日3"]] = "-"
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
@@ -579,14 +595,6 @@ if st.session_state.raw_data and len(st.session_state.raw_data) > 0:
             target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
             return (filter_sales3_min is None or target_dt >= filter_sales3_min) and (filter_sales3_max is None or target_dt <= filter_sales3_max)
         except: return False
-            
-    if "直近販売日3" in query_df.columns:
-        query_df = query_df[query_df["直近販売日3"].apply(check_sales3_date_range)]
-        
-    if filter_recent == "1件以上": query_df = query_df[query_df["_recent_num"] >= 1]
-    elif filter_recent == "5件以上": query_df = query_df[query_df["_recent_num"] >= 5]
-    elif filter_recent == "10件以上": query_df = query_df[query_df["_recent_num"] >= 10]
-    elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df.get("直近1ヶ月の評価数") == "20件以上")]
 
    # =============================================
     # 💡 [安全ガード] 列の存在チェックと代入
