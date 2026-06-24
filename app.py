@@ -468,10 +468,6 @@ if st.session_state.raw_data:
         num_match = re.search(r"(\d+)", val_str)
         return int(num_match.group(1)) if num_match else 0
 
-    # 💡 元データに「作品紹介文」がなければ空欄で作成しておく（安全対策）
-    if "作品紹介文" not in df_filter.columns:
-        df_filter["作品紹介文"] = "取得失敗"
-
     df_filter["_price_num"] = pd.to_numeric(df_filter["価格(円)"], errors='coerce').fillna(0).astype(int)
     df_filter["_buy_num"] = df_filter["購入者数"].apply(clean_purchase_count)
     df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
@@ -527,17 +523,23 @@ if st.session_state.raw_data:
     elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df["直近1ヶ月の評価数"] == "20件以上")]
 
     query_df["購入者数"] = query_df["_buy_num"]
-    
-    # 💡 不要な計算用カラムを削除（ここでは「作品紹介文」を絶対に削除しない！）
     final_df = query_df.drop(columns=["_price_num", "_buy_num", "_rev_num", "_recent_num"])
     
-    # 💡 表示名をリネームした後の名前に合わせてターゲットカラムを設定する
-    target_columns = ["No.", "作家名", "商品名", "価格(円)", "商品URL", "お気に入り数", "購入者数", "直近販売日1", "直近販売日2", "直近販売日3", "ユーザーの総評価数", "直近1ヶ月の総評価数", "一番初めの評価日", "作品紹介文"]
-    
-    # 💡 順番の並び替えを行う前に、あらかじめ列名を変更（リネーム）しておく
+    # 💡 【超重要】もしデータに「作品紹介文」の列がなければ、ここで強制的に列の枠を作る
+    if "作品紹介文" not in final_df.columns:
+        final_df["作品紹介文"] = "データなし"
+        
+    # 💡 表示名を先に変更しておく
     final_df = final_df.rename(columns={"総評価数": "ユーザーの総評価数", "直近1ヶ月の評価数": "直近1ヶ月の総評価数"})
     
-    # 💡 リネームが済んだあとに列順をパチッと揃える（これで作品紹介文が残ります）
+    # 💡 最終的にExcelに出力したい列の名前を正確に定義する
+    target_columns = [
+        "No.", "作家名", "商品名", "価格(円)", "商品URL", "お気に入り数", "購入者数", 
+        "直近販売日1", "直近販売日2", "直近販売日3", "ユーザーの総評価数", 
+        "直近1ヶ月の総評価数", "一番初めの評価日", "作品紹介文"
+    ]
+    
+    # 💡 定義した列の順番通りに再配置する（これで「作品紹介文」が確実に一番右に残ります）
     final_df = final_df.reindex(columns=target_columns)
     if not final_df.empty: final_df["No."] = range(1, len(final_df) + 1)
         
@@ -552,7 +554,6 @@ if st.session_state.raw_data:
     )
     
     st.subheader("👀 絞り込み結果のプレビュー")
-    # 💡 画面のプレビューはすっきり見せるために、一時的に「作品紹介文」を抜いた表を表示する
     display_df = final_df.drop(columns=["作品紹介文"]) if "作品紹介文" in final_df.columns else final_df
     st.dataframe(
         display_df, 
