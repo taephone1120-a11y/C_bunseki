@@ -692,7 +692,6 @@ if st.session_state.raw_data:
     help="使用している作品のジャンルや名前、デザインの特徴、こだわりなどを自由に入力してください。"
 )
         
-        generate_btn = st.button("🚀 タイトル提案のプロンプト作成", type="primary")
 # =================================================================
 # 🛍️ ボタン1: 市場10選を分析してタイトルを提案してもらう
 # =================================================================        
@@ -701,7 +700,7 @@ import textwrap
 # 💡 検索後（データが存在する場合）のみエリア全体を表示
 if 'candidate_items' in locals() and not candidate_items.empty:
 
-    generate_btn = st.button("🚀 検索上位を狙うタイトルプロンプトを作成")
+    generate_btn = st.button("🚀 検索上位を狙うタイトルプロンプトを作成", type="primary")
 
     if generate_btn:
         with st.spinner("📝 AI用のプロンプトを作成中..."):
