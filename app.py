@@ -449,7 +449,7 @@ def scrape_creema_fast(start_url, max_num):
 #   メインのスクレイピング制御
 # =============================================
 def scrape_creema_fast(start_url, max_num):
-    # 💡 【エラー根絶の安全対策】必要なライブラリを関数の内側で完璧にすべて読み込みます
+    # 💡 必要なライブラリを関数内で安全に読み込み
     import time
     import random
     import re
@@ -458,13 +458,11 @@ def scrape_creema_fast(start_url, max_num):
     from datetime import datetime, timedelta
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import streamlit as st
-    
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
     }
-    
-    # 時間の計算（ここが迷子になっていた原因です）
     today = datetime.now()
     one_month_ago = today - timedelta(days=30)
     three_months_ago = today - timedelta(days=90)
@@ -475,7 +473,7 @@ def scrape_creema_fast(start_url, max_num):
     detected_market_total = 170000 
     page_status = st.empty()
     
-    # 🌟 ステップ1: 1000件分の商品リンクをページをめくりながら集める
+    # 🌟 ステップ1: ページをめくりながら商品リンクを収集
     while current_url and len(all_item_elements_data) < max_num:
         page_status.info(f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています (収集済リンク: {len(all_item_elements_data)}件)")
         try:
@@ -524,18 +522,17 @@ def scrape_creema_fast(start_url, max_num):
     total_found = len(all_item_elements_data)
     if total_found == 0: return None
         
-    # 🌟 ステップ2: 詳細解析（1000件対応のための安全分割システム）
+    # 🌟 ステップ2: 外部の fetch_single_item を使って並列解析（1000件安全対策版）
     status_text = st.empty()
     progress_bar = st.progress(0)
     scraped_data = []
     
-    # 件数が300件を超える大容量の時は、同時アクセス数を「5」に絞ってサーバーブロックを防ぐ
+    # 大容量の時は同時接続数を「5」に落としてサーバーエラーを防ぐ
     max_workers = 5 if total_found > 300 else 12
-    
-    # 一気に1000件叩くとフリーズするので、150件ずつのグループ（バッチ）に分けて処理する
     batch_size = 150
     current_idx = 0
     
+    # 150件ずつのグループに小分けにして実行
     for b_idx in range(0, total_found, batch_size):
         batch = all_item_elements_data[b_idx : b_idx + batch_size]
         
@@ -554,11 +551,10 @@ def scrape_creema_fast(start_url, max_num):
                         result["作品紹介文"] = "取得失敗"
                     scraped_data.append(result)
                 
-                # Streamlit画面のプログレスバーと文字を更新
                 progress_bar.progress(min(current_idx / total_found, 1.0))
                 status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
                 
-        # 150件のグループを1つ処理し終えるたびに、約5秒間の休憩を挟んで通信をリフレッシュする
+        # 150件ごとにサーバーを労わるため5秒休憩
         if b_idx + batch_size < total_found:
             status_text.text(f"☕️【安全装置】サーバー負荷軽減のため、5秒間休憩しています...（現在 {current_idx}件完了）")
             time.sleep(random.uniform(4.5, 5.5))
