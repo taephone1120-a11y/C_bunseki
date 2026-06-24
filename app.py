@@ -195,7 +195,7 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
         title = item_data["title"]
         price = item_data["price"]
 
-        purchase_count = 0  
+        purchase_count = "-"  # 💡 Creemaの仕様変更に合わせて初期値をハイフンに
         favorite = "取得失敗"
         review = "取得失敗"
         recent_review_display = "0件"  
@@ -209,45 +209,43 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
         if detail_res.status_code == 200:
             detail_soup = BeautifulSoup(detail_res.content, "html.parser")
             
-            # 💡 作品紹介文を取得する
+            # 💡 1. 作品紹介文の取得
             desc_element = detail_soup.select_one(".p-item-detail-description, .js-item-description, .p-item-detail__description")
             if desc_element:
-                # 💡 【修正箇所】改行も特殊文字も一切消さず、そのまま丸ごと取得します！
                 description_text = desc_element.text.strip()
 
-            purchase_element = detail_soup.find(string=re.compile(r"(\d+人購入|\d+人以上購入)"))
-            if purchase_element:
-                purchase_count = purchase_element.strip()
-            
+            # 💡 2. お気に入り数の取得
             fav_element = detail_soup.find(class_=re.compile(r"js-like-item-number"))
             if fav_element:
                 favorite = fav_element.text.strip()
             
-            all_text = detail_soup.get_text()
-            matches = re.findall(r"[（\(](\d+)[）\)]", all_text)
-            if matches:
-                review = matches[0]
-
+            # 💡 3. 総評価数の取得（クリエイター評価のリンクテキストから「224件」のような数字を抽出）
             rating_link_tag = detail_soup.find("a", href=re.compile(r"rating/sale"))
+            if rating_link_tag and rating_link_tag.text:
+                matches = re.search(r"（(\d+)件）", rating_link_tag.text)
+                if matches:
+                    review = matches.group(1)
+            
+            # もし上記で取れなくても、全体のテキストから予備で探す
+            if review == "取得失敗":
+                all_text = detail_soup.get_text()
+                matches = re.findall(r"[（\(](\d+)[）\)]", all_text)
+                if matches:
+                    review = matches[0]
+
+            # 💡 4. 【大改造】購入者数に関係なく、評価ページがあれば「直近販売日」を必ず3件分取りに行く！
             if rating_link_tag:
                 base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                 
-                required_sales_count = 0
-                if isinstance(purchase_count, str):
-                    buy_num_match = re.search(r"(\d+)", purchase_count)
-                    if buy_num_match:
-                        p_num = int(buy_num_match.group(1))
-                        required_sales_count = min(p_num, 3) if p_num > 0 else 0
+                # 直近販売日を最大3件取得
+                sorted_dates = fetch_recent_sales_dates(base_rating_url, title, 3, headers, three_months_ago)
+                for idx in range(3):
+                    if idx < len(sorted_dates):
+                        recent_sales[idx] = sorted_dates[idx]
+                    else:
+                        recent_sales[idx] = "3ヶ月以上前"
                 
-                if required_sales_count > 0:
-                    sorted_dates = fetch_recent_sales_dates(base_rating_url, title, required_sales_count, headers, three_months_ago)
-                    
-                    for idx in range(required_sales_count):
-                        if idx < len(sorted_dates):
-                            recent_sales[idx] = sorted_dates[idx]
-                        else:
-                            recent_sales[idx] = "3ヶ月以上前"
-                
+                # 💡 5. 直近1ヶ月の評価数と、一番初めの評価日の解析
                 rating_res = requests.get(base_rating_url, headers=headers, timeout=8)
                 if rating_res.status_code == 200:
                     rating_soup = BeautifulSoup(rating_res.content, "html.parser")
@@ -297,7 +295,7 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
             "価格(円)": price,
             "商品URL": link,
             "お気に入り数": favorite,
-            "購入者数": purchase_count,
+            "購入者数": purchase_count,  # 💡 現在は取得できないためハイフン表示になります
             "直近販売日1": recent_sales[0],
             "直近販売日2": recent_sales[1],
             "直近販売日3": recent_sales[2],
