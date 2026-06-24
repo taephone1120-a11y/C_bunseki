@@ -577,8 +577,17 @@ if st.session_state.raw_data and len(st.session_state.raw_data) > 0:
     elif filter_recent == "10件以上": query_df = query_df[query_df["_recent_num"] >= 10]
     elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df.get("直近1ヶ月の評価数") == "20件以上")]
 
-    # 💡 ここで元の「購入者数」列を、数値化した綺麗なデータに置き換えます
-    query_df["購入者数"] = query_df["_buy_num"]
+   # =============================================
+    # 💡 [安全ガード] 列の存在チェックと代入
+    # =============================================
+    if "_buy_num" in query_df.columns:
+        query_df["購入者数"] = query_df["_buy_num"]
+    elif "購入者数" in df_filter.columns:
+        # 万が一query_dfから消えていた場合は、元のdf_filterの計算結果から復元
+        query_df["購入者数"] = df_filter["_buy_num"]
+    else:
+        # どちらにもなければ0で埋める（エラー落ちを絶対に防ぐ）
+        query_df["購入者数"] = 0
     
     # 一時的な計算用列を削除
     drop_cols = [c for c in ["_price_num", "_buy_num", "_rev_num", "_recent_num"] if c in query_df.columns]
