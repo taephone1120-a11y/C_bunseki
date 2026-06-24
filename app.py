@@ -411,11 +411,28 @@ def scrape_creema_fast(start_url, max_num):
 #   Excelダウンロード用バイナリ生成
 # =============================================
 def convert_df_to_excel(df):
+    # 💡 コピーを作成し、元のデータを壊さないようにする
+    export_df = df.copy()
+    
+    # 💡 500件でも絶対にIllegalCharacterErrorを起こさないための文字クリーニング関数
+    def remove_illegal_chars(val):
+        if isinstance(val, str):
+            # Excelで禁止されている文字コード領域（制御文字など）を一括クリア
+            cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", val)
+            # さらにopenpyxlがエラーを起こす可能性がある文字を除去
+            return "".join(ch for ch in cleaned if ch.isprintable() or ch in "\n\r\t")
+        return val
+
+    # 全ての列のテキストからバグ文字を掃除する
+    for col in export_df.columns:
+        export_df[col] = export_df[col].apply(remove_illegal_chars)
+
+    # 💡 データの書き出し（「作品紹介文」を削除する drop 処理を完全に撤廃しました！）
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        export_df = df.drop(columns=["作品紹介文"]) if "作品紹介文" in df.columns else df
         export_df.to_excel(writer, sheet_name="リサーチ結果", index=False)
         worksheet = writer.sheets["リサーチ結果"]
+        
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
         header_font = Font(name="Meiryo", size=11, bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
@@ -431,12 +448,19 @@ def convert_df_to_excel(df):
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 else:
                     cell.font = data_font
-                    if cell.column in [1, 4]: cell.alignment = Alignment(horizontal="right", vertical="center")
-                    elif cell.column in [6, 7, 8, 9, 10, 11, 12, 13]: cell.alignment = Alignment(horizontal="center", vertical="center")
-                    else: cell.alignment = Alignment(horizontal="left", vertical="center")
+                    # 💡 右寄せ・中央寄せの列番号の判定
+                    if cell.column in [1, 4]: 
+                        cell.alignment = Alignment(horizontal="right", vertical="center")
+                    elif cell.column in [6, 7, 8, 9, 10, 11, 12, 13]: 
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                    else: 
+                        cell.alignment = Alignment(horizontal="left", vertical="center")
+                        
+        # 💡 列幅の自動調整（新しく増えた「作品紹介文」の列もきれいに幅が広がります）
         for col in worksheet.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
             worksheet.column_dimensions[col[0].column_letter].width = min(max(max_len + 3, 10), 50)
+            
     return output.getvalue()
 
 # =============================================
