@@ -166,7 +166,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             
-                            # --- 💡 [完全内蔵] 直近販売日取得ロジック ---
+                            # --- 💡 [完全内蔵] 直近販売日取得ロジック (インデント・バグ修正版) ---
                             all_matched_dates = []
                             current_page = 1
                             current_url = base_rating_url
@@ -225,9 +225,9 @@ def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
                             for idx in range(3):
                                 if idx < len(sorted_dates): 
                                     recent_sales[idx] = sorted_dates[idx]
-                    # --------------------------------------------
+                            # --- 💡 [完全内蔵ロジック終了] ---
 
-                            # 直近1ヶ月の評価数
+                            # 6. 直近1ヶ月の評価数
                             rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
                             if rating_res.status_code == 200:
                                 rating_soup = BeautifulSoup(rating_res.content, "html.parser")
