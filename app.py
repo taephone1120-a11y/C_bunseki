@@ -522,14 +522,14 @@ if st.session_state.raw_data:
     if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
     
     def check_sales3_date_range(date_str):
-    # 開始も終了も「未指定(None)」なら、文字データ（3ヶ月以上前など）も含めてすべて表示する
-    if filter_sales3_min is None and filter_sales3_max is None: return True
-    # どちらかが指定されている場合は、日付以外の文字データは除外する
-    if date_str in ["-", "3ヶ月以上前", "取得失敗"]: return False
-    try:
-        target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
-        return (filter_sales3_min is None or target_dt >= filter_sales3_min) and (filter_sales3_max is None or target_dt <= filter_sales3_max)
-    except: return False
+        # 開始も終了も「未指定(None)」なら、文字データ（3ヶ月以上前など）も含めてすべて表示する
+        if filter_sales3_min is None and filter_sales3_max is None: return True
+        # どちらかが指定されている場合は、日付以外の文字データは除外する
+        if date_str in ["-", "3ヶ月以上前", "取得失敗"]: return False
+        try:
+            target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
+            return (filter_sales3_min is None or target_dt >= filter_sales3_min) and (filter_sales3_max is None or target_dt <= filter_sales3_max)
+        except: return False
             
     query_df = query_df[query_df["直近販売日3"].apply(check_sales3_date_range)]
     if filter_recent == "1件以上": query_df = query_df[query_df["_recent_num"] >= 1]
