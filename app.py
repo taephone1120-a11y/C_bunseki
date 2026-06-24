@@ -209,14 +209,11 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
         if detail_res.status_code == 200:
             detail_soup = BeautifulSoup(detail_res.content, "html.parser")
             
-            # 💡 【ここを修正しました！】 
-            # 実際のHTMLに合わせた「.p-item-detail-description」を検索条件の最優先に追加！
+            # 💡 作品紹介文を取得する
             desc_element = detail_soup.select_one(".p-item-detail-description, .js-item-description, .p-item-detail__description")
             if desc_element:
-                # 1. 改行や連続する空白を分解し、半角スペース1つで繋ぎ直して1行にする
-                raw_text = " ".join(desc_element.text.strip().split())
-                # 2. Excel書き込み時にIllegalCharacterErrorを起こす「目に見えない制御文字」を完全に消去する
-                description_text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", raw_text)
+                # 💡 【修正箇所】改行も特殊文字も一切消さず、そのまま丸ごと取得します！
+                description_text = desc_element.text.strip()
 
             purchase_element = detail_soup.find(string=re.compile(r"(\d+人購入|\d+人以上購入)"))
             if purchase_element:
