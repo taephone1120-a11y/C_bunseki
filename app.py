@@ -212,8 +212,10 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
             # 💡 作品紹介文を取得する
             desc_element = detail_soup.select_one(".js-item-description, .p-item-detail__description")
             if desc_element:
-                # 💡 改行や連続する空白をバラバラに分解し、半角スペース1つで繋ぎ直して1行にします
-                description_text = " ".join(desc_element.text.strip().split())
+                # 1. 改行や連続する空白を分解し、半角スペース1つで繋ぎ直して1行にする
+                raw_text = " ".join(desc_element.text.strip().split())
+                # 2. 💡 Excel書き込み時にIllegalCharacterErrorを起こす「目に見えない制御文字」を完全に消去する
+                description_text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", raw_text)
 
             purchase_element = detail_soup.find(string=re.compile(r"(\d+人購入|\d+人以上購入)"))
             if purchase_element:
