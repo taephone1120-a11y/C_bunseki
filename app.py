@@ -113,7 +113,7 @@ def scrape_creema_fast(start_url, max_num):
     # ----------------------------------------------------
     # 💡 【完全内蔵】1件詳細解析用パーツ（外部依存をゼロに設計）
     # ----------------------------------------------------
-    def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
+def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
         try:
             link = item_data["link"]
             creator = item_data["creator"]
@@ -166,7 +166,7 @@ def scrape_creema_fast(start_url, max_num):
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             
-                            # --- 💡 [完全内蔵] 直近販売日取得ロジック (インデント・構文修正版) ---
+                            # --- 💡 [完全内蔵] 直近販売日取得ロジック ---
                             all_matched_dates = []
                             current_page = 1
                             current_url = base_rating_url
@@ -225,19 +225,6 @@ def scrape_creema_fast(start_url, max_num):
                             for idx in range(3):
                                 if idx < len(sorted_dates): 
                                     recent_sales[idx] = sorted_dates[idx]
-                            # --------------------------------------------
-                            
-                        except: pass # 5. 評価ページの解析 try に対する except
-
-            except: pass # detail_res の大きめの try に対する except
-
-            # ここで取得したデータを辞書等に詰めて返す処理（元のコードの続き）が入るはずです
-            # return { ... } 
-
-        except Exception as e:
-            # 一番外側の try に対する except
-            print(f"Error in _internal_fetch_item: {e}")
-            # return None など
                     # --------------------------------------------
 
                             # 直近1ヶ月の評価数
