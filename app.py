@@ -1405,54 +1405,69 @@ if saved_candidate_items is not None and not saved_candidate_items.empty:
         """).strip()
 
     # テキストエリアとボタンの表示
-    st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
-    st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
+    if generate_desc_btn:
+    with st.spinner("🕵️‍♂️ 市場10選の作品ページから、紹介文を読み込んでいます（数秒かかります）..."):
 
-    st.text_area(
-        "以下の文章を丸ごとコピーしてください：",
-        value=final_desc_prompt,
-        height=500,
-        key="desc_prompt_area"
-    )
+        descriptions_summary = ""
 
-    # JavaScript用に安全変換
-    js_safe_prompt = json.dumps(final_desc_prompt)
+        for display_no, (_, row) in enumerate(candidate_items.iterrows(), start=1):
+            # 紹介文取得処理
+            ...
 
-    # コピーボタンのHTML
-    copy_button_html = f"""
-    <div style="margin-top: -10px; margin-bottom: 20px;">
-        <button id="copy-desc-btn" style="
-            background-color: #FF4B4B;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            font-size: 14px;
-            font-weight: bold;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            width: 100%;
-        ">📋 このプロンプトをワンクリックでコピーする</button>
-    </div>
+        final_desc_prompt = textwrap.dedent(f"""
+        あなたは、Creema・minneなどのハンドメイドマーケットで売れる商品ページを分析し、
+        検索上位に表示されやすく、かつ購入につながる作品紹介文を作る専門家です。
 
-    <script>
-    document.getElementById('copy-desc-btn').addEventListener('click', function() {{
-        const textToCopy = {js_safe_prompt};
+        ...
+        """).strip()
 
-        navigator.clipboard.writeText(textToCopy).then(function() {{
-            const btn = document.getElementById('copy-desc-btn');
-            btn.innerText = '✅ コピーが完了しました！';
-            btn.style.backgroundColor = '#28a745';
+        # ここから下も、必ず if generate_desc_btn の中
+        st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
+        st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
 
-            setTimeout(function() {{
-                btn.innerText = '📋 このプロンプトをワンクリックでコピーする';
-                btn.style.backgroundColor = '#FF4B4B';
-            }}, 2000);
-        }}).catch(function(err) {{
-            alert('コピーに失敗しました。テキストエリアから直接コピーしてください。');
+        st.text_area(
+            "以下の文章を丸ごとコピーしてください：",
+            value=final_desc_prompt,
+            height=500,
+            key="desc_prompt_area"
+        )
+
+        js_safe_prompt = json.dumps(final_desc_prompt)
+
+        copy_button_html = f"""
+        <div style="margin-top: -10px; margin-bottom: 20px;">
+            <button id="copy-desc-btn" style="
+                background-color: #FF4B4B;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: background-color 0.3s;
+                width: 100%;
+            ">📋 このプロンプトをワンクリックでコピーする</button>
+        </div>
+
+        <script>
+        document.getElementById('copy-desc-btn').addEventListener('click', function() {{
+            const textToCopy = {js_safe_prompt};
+
+            navigator.clipboard.writeText(textToCopy).then(function() {{
+                const btn = document.getElementById('copy-desc-btn');
+                btn.innerText = '✅ コピーが完了しました！';
+                btn.style.backgroundColor = '#28a745';
+
+                setTimeout(function() {{
+                    btn.innerText = '📋 このプロンプトをワンクリックでコピーする';
+                    btn.style.backgroundColor = '#FF4B4B';
+                }}, 2000);
+            }}).catch(function(err) {{
+                alert('コピーに失敗しました。テキストエリアから直接コピーしてください。');
+            }});
         }});
-    }});
-    </script>
-    """
+        </script>
+        """
 
-    st.components.v1.html(copy_button_html, height=60)
+        st.components.v1.html(copy_button_html, height=60)
