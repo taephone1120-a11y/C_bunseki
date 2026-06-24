@@ -129,6 +129,7 @@ def scrape_creema_fast(start_url, max_num):
             last_voices = []
             recent_sales = ["-", "-", "-"]
             description_text = "-" 
+            purchase_date = "-"  # 👈 【追加】購入日を格納する変数を初期化
             
             try:
                 detail_res = requests.get(link, headers=headers, timeout=10)
@@ -138,8 +139,27 @@ def scrape_creema_fast(start_url, max_num):
                     # 1. 作品紹介文
                     try:
                         desc_element = detail_soup.select_one(".p-item-detail-description, .js-item-description, .p-item-detail__description")
-                        if desc_element: description_text = desc_element.text.strip()
+                        if desc_element: 
+                            description_text = desc_element.text.strip()
                     except: pass
+
+                    # ----------------------------------------------------
+                    # 🎯 【追加】特定のタイトルの下から日付を抽出する処理
+                    # ----------------------------------------------------
+                    try:
+                        target_title = "ここに探したいタイトルの文字列"  # 👈 実際に探したい文字列（例: "購入日時" など）に書き換えてください
+                        
+                        if target_title in description_text:
+                            # タイトル以降の文字列を切り取る
+                            after_title_text = description_text.split(target_title, 1)[1]
+                            
+                            # 最初に出てくる日付（例: 2026.06.25 や 2026/06/25 など）を正規表現で探す
+                            date_match = re.search(r"(\d{4}[./-]\d{2}[./-]\d{2})", after_title_text)
+                            if date_match:
+                                purchase_date = date_match.group(1)  # 見つかった日付をセット
+                    except:
+                        purchase_date = "解析失敗"
+                    # ----------------------------------------------------
 
                     # 2. お気に入り数
                     try:
@@ -281,6 +301,7 @@ def scrape_creema_fast(start_url, max_num):
                 "お気に入り数": favorite, "購入者数": purchase_count,  
                 "直近販売日1": recent_sales[0], "直近販売日2": recent_sales[1], "直近販売日3": recent_sales[2],
                 "総評価数": review, "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
+                "購入日": purchase_date,  # 👈 【追加】出力されるデータに購入日を含める
                 "作品紹介文": description_text 
             }
         except:
