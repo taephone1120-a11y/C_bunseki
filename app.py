@@ -402,7 +402,7 @@ if start_button:
         send_line_notification(search_keyword if mode == "キーワード検索" else target_url, max_items)
         
         # リサーチ関数を実行
-        with st.spinner("🔄 クリーマのデータを解析中..."):
+        with st.spinner("🔄 Creemaのデータを解析中..."):
             results = scrape_creema_fast(target_url, max_items)
             
         if results and results["items"]:
