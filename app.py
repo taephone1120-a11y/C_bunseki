@@ -498,9 +498,11 @@ if st.session_state.raw_data and len(st.session_state.raw_data) > 0:
         num_match = re.search(r"(\d+)", val_str)
         return int(num_match.group(1)) if num_match else 0
 
-    # 💡 必要な列が存在することを確認しながら安全に変換します
+# 💡 [超安全版] 必要な列が存在することを確認し、Noneやエラーを完全に防いで変換します
     if "価格(円)" in df_filter.columns:
-        df_filter["_price_num"] = pd.to_numeric(df_filter["価格(円)"], errors='coerce').fillna(0).astype(int)
+        # 数字以外の文字（「円」やカンマなど）を完全に排除してから数値化
+        df_filter["_price_num"] = df_filter["価格(円)"].astype(str).str.replace(r"\D", "", regex=True)
+        df_filter["_price_num"] = pd.to_numeric(df_filter["_price_num"], errors='coerce').fillna(0).astype(int)
     else:
         df_filter["_price_num"] = 0
 
@@ -510,14 +512,23 @@ if st.session_state.raw_data and len(st.session_state.raw_data) > 0:
         df_filter["_buy_num"] = 0
 
     if "総評価数" in df_filter.columns:
-        df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
+        # Noneや「データなし」を考慮して安全に数値化
+        df_filter["_rev_num"] = df_filter["総評価数"].astype(str).str.replace(r"\D", "", regex=True)
+        df_filter["_rev_num"] = pd.to_numeric(df_filter["_rev_num"], errors='coerce').fillna(0).astype(int)
     else:
         df_filter["_rev_num"] = 0
 
     if "直近1ヶ月の評価数" in df_filter.columns:
-        df_filter["_recent_num"] = pd.to_numeric(df_filter["直近1ヶ月の評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
+        df_filter["_recent_num"] = df_filter["直近1ヶ月の評価数"].astype(str).str.replace(r"\D", "", regex=True)
+        df_filter["_recent_num"] = pd.to_numeric(df_filter["_recent_num"], errors='coerce').fillna(0).astype(int)
     else:
         df_filter["_recent_num"] = 0
+
+    # 元のデータ自体に None が混ざっている場合の表示用ガード
+    df_filter["価格(円)"] = df_filter.get("価格(円)", 0).fillna(0)
+    df_filter["総評価数"] = df_filter.get("総評価数", "0件").fillna("0件")
+    df_filter["直近1ヶ月の評価数"] = df_filter.get("直近1ヶ月の評価数", "0件").fillna("0件")
+    df_filter["お気に入り数"] = df_filter.get("お気に入り数", 0).fillna(0)
 
     # 購入者数に応じた「直近販売日」のマスク（- への書き換え）処理
     # 💡 該当する列が存在する場合のみ実行
