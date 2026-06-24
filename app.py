@@ -384,7 +384,12 @@ def scrape_creema_fast(start_url, max_num):
         future_to_item = {executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): i for i, item_data in enumerate(all_item_elements_data)}
         for current_idx, future in enumerate(as_completed(future_to_item), 1):
             result = future.result()
-            if result: scraped_data.append(result)
+            if result: 
+                # 💡 【ここが超重要！】
+                # どんな順番で返ってきても、データ内に「作品紹介文」のキーが絶対に存在することを確定させる
+                if "作品紹介文" not in result:
+                    result["作品紹介文"] = "取得失敗"
+                scraped_data.append(result)
             progress_bar.progress(current_idx / total_found)
             status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
             
@@ -392,7 +397,11 @@ def scrape_creema_fast(start_url, max_num):
     status_text.empty()
     
     if scraped_data:
-        for i, item in enumerate(scraped_data, 1): item["No."] = i
+        for i, item in enumerate(scraped_data, 1): 
+            item["No."] = i
+            # 💡 念押しで、最終出力用リストの全データに項目を確実に保証する
+            if "作品紹介文" not in item:
+                item["作品紹介文"] = "取得失敗"
         return {"items": scraped_data, "market_total": detected_market_total}
     return None
 
