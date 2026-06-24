@@ -577,29 +577,33 @@ if st.session_state.raw_data:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
+# =================================================================
+# 👀 絞り込み結果のプレビュー
+# =================================================================
+
+if "final_df" in locals() and final_df is not None and not final_df.empty:
+
     st.subheader("👀 絞り込み結果のプレビュー")
 
-display_df = final_df.drop(columns=["作品紹介文"]) if "作品紹介文" in final_df.columns else final_df
+    display_df = (
+        final_df.drop(columns=["作品紹介文"])
+        if "作品紹介文" in final_df.columns
+        else final_df
+    )
 
-st.dataframe(
-    display_df, 
-    use_container_width=True, 
-    height=350, 
-    hide_index=True,
-    column_config={
-        "商品名": st.column_config.TextColumn("商品名", width=250), 
-        "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")
-    }
-)
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        height=350,
+        hide_index=True,
+        column_config={
+            "商品名": st.column_config.TextColumn("商品名", width=250),
+            "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")
+        }
+    )
 
-# タイトル・紹介文プロンプト用に、検索上位10件を保存
-if "final_df" in locals() and final_df is not None and not final_df.empty:
-    candidate_items = final_df.head(10).copy()
-    st.session_state["candidate_items"] = candidate_items
     # タイトル・紹介文プロンプト用に、検索上位10件を保存
-candidate_items = final_df.head(10).copy()
-
-if not candidate_items.empty:
+    candidate_items = final_df.head(10).copy()
     st.session_state["candidate_items"] = candidate_items
 
     # =============================================
