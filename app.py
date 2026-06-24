@@ -589,6 +589,11 @@ if st.session_state.raw_data:
             "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")
         }
     )
+    # タイトル・紹介文プロンプト用に、検索上位10件を保存
+candidate_items = final_df.head(10).copy()
+
+if not candidate_items.empty:
+    st.session_state["candidate_items"] = candidate_items
 
     # =============================================
     #   📊 売れやすさ計算 (詳細版)
