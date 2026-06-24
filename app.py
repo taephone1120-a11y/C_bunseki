@@ -623,6 +623,12 @@ if start_button:
         send_line_notification(cond_text, max_items)
         st.session_state.target_max_items = max_items
         
+        # 💡 【重要】プログラムに「fetch_single_itemはこれだよ！」とその場で100%認識させるための安全対策
+        import sys
+        if '__main__' in sys.modules and hasattr(sys.modules['__main__'], 'fetch_single_item'):
+            fetch_single_item = sys.modules['__main__'].fetch_single_item
+        
+        # 最速モードのまま実行
         res_dict = scrape_creema_fast(target_url, max_items)
         if res_dict:
             st.session_state.raw_data = res_dict["items"]
