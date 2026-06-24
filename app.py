@@ -210,8 +210,10 @@ def fetch_single_item(item_data, headers, one_month_ago, three_months_ago):
             detail_soup = BeautifulSoup(detail_res.content, "html.parser")
             
             desc_element = detail_soup.select_one(".js-item-description, .p-item-detail__description")
-            if desc_element:
-                description_text = desc_element.text.strip()
+if desc_element:
+    # 💡 text.strip().split() で改行や連続する空白をバラバラに分解し、
+    # 半角スペース1つで繋ぎ直すことで、1行の綺麗なテキストに変換します
+    description_text = " ".join(desc_element.text.strip().split())
 
             purchase_element = detail_soup.find(string=re.compile(r"(\d+人購入|\d+人以上購入)"))
             if purchase_element:
