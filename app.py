@@ -487,6 +487,19 @@ if st.session_state.raw_data:
     df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     df_filter["_recent_num"] = pd.to_numeric(df_filter["直近1ヶ月の評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
 
+    # ----------------------------------------------------
+    # 🆕 購入者数に応じた「直近販売日」のマスク（- への書き換え）処理
+    # ----------------------------------------------------
+    # 購入者数が0の場合：販売日1, 2, 3 をすべて「-」に
+    df_filter.loc[df_filter["_buy_num"] == 0, ["直近販売日1", "直近販売日2", "直近販売日3"]] = "-"
+    
+    # 購入者数が1の場合：販売日2, 3 を「-」に
+    df_filter.loc[df_filter["_buy_num"] == 1, ["直近販売日2", "直近販売日3"]] = "-"
+    
+    # 購入者数が2の場合：販売日3 を「-」に
+    df_filter.loc[df_filter["_buy_num"] == 2, ["直近販売日3"]] = "-"
+    # ----------------------------------------------------
+
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
     
