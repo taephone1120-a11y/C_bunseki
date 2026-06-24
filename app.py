@@ -161,7 +161,7 @@ def scrape_creema_fast(start_url, max_num):
                             if matches: review = matches.group(1)
                         except: pass
 
-                    # 5. 評価ページの解析
+  # 5. 評価ページの解析
                     if rating_link_tag:
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
@@ -177,6 +177,7 @@ def scrape_creema_fast(start_url, max_num):
                                     if res.status_code != 200: break
                                     
                                     soup = BeautifulSoup(res.content, "html.parser")
+                                    # 1つの評価ブロック（全体の四角）を取得
                                     blocks = soup.select(".p-creator-rating-rating__content")
                                     if not blocks: break
                                     
@@ -188,22 +189,28 @@ def scrape_creema_fast(start_url, max_num):
                                                 has_target_item = True
                                                 break
                                         
+                                        # 対象商品だった場合のみ、そのブロック内の「購入者コメントエリア」から日付を抽出
                                         if has_target_item:
-                                            date_tag = block.select_one(".p-creator-rating-rating__date")
-                                            if date_tag:
-                                                date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-                                                if date_match:
-                                                    review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                    if review_date >= three_months_ago:
-                                                        all_matched_dates.append(review_date)
-                                                        
+                                            voice_tag = block.select_one(".p-creator-rating-rating__voice")
+                                            if voice_tag:
+                                                date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
+                                                if date_tag:
+                                                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                                                    if date_match:
+                                                        review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                                        if review_date >= three_months_ago:
+                                                            all_matched_dates.append(review_date)
+                                                            
                                     all_matched_dates.sort(reverse=True)
                                     if len(all_matched_dates) >= 3: break  
                                     
+                                    # 早期終了判定（購入者コメントの日付のみをチェック対象にする）
                                     all_page_dates = []
-                                    for d_tag in soup.select(".p-creator-rating-rating__date"):
-                                        d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", d_tag.text)
-                                        if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
+                                    for v_tag in soup.select(".p-creator-rating-rating__voice"):
+                                        d_tag = v_tag.select_one(".p-creator-rating-rating__date")
+                                        if d_tag:
+                                            d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", d_tag.text)
+                                            if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
                                     if all_page_dates and max(all_page_dates) < three_months_ago: break
                                     
                                     current_page += 1
@@ -215,10 +222,12 @@ def scrape_creema_fast(start_url, max_num):
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
+                            # 1、2、3枠に仕分け（3ヶ月以内にデータがなければ「3ヶ月以上前」を維持）
                             recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
                             for idx in range(3):
                                 if idx < len(sorted_dates): 
                                     recent_sales[idx] = sorted_dates[idx]
+                        except: pass
 
                             # 6. 直近1ヶ月の評価数
                             rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
