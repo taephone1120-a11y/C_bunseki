@@ -199,23 +199,23 @@ def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
                                                 if review_date >= three_months_ago:
                                                     all_matched_dates.append(review_date)
                                                     
-                            # ページ内の全ブロックを見終わった後、3件以上集まっていれば終了
-                            all_matched_dates.sort(reverse=True)
-                            if len(all_matched_dates) >= 3: break  
-                            
-                            # 早期終了判定（このページの一番新しい評価すら3ヶ月前なら終了）
-                            all_page_dates = []
-                            for d_tag in soup.select(".p-creator-rating-rating__date"):
-                                d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", d_tag.text)
-                                if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
-                            if all_page_dates and max(all_page_dates) < three_months_ago: break
-                            
-                            current_page += 1
-                            current_url = f"{base_rating_url}&page={current_page}" if "?" in base_rating_url else f"{base_rating_url}?page={current_page}"
-                            time.sleep(0.1)
-                        except:
-                            break
-                            
+                                # ページ内の全ブロックを見終わった後、3件以上集まっていれば終了
+                                all_matched_dates.sort(reverse=True)
+                                if len(all_matched_dates) >= 3: break  
+                                
+                                # 早期終了判定（このページの一番新しい評価すら3ヶ月前なら終了）
+                                all_page_dates = []
+                                for d_tag in soup.select(".p-creator-rating-rating__date"):
+                                    d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", d_tag.text)
+                                    if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
+                                if all_page_dates and max(all_page_dates) < three_months_ago: break
+                                
+                                current_page += 1
+                                current_url = f"{base_rating_url}&page={current_page}" if "?" in base_rating_url else f"{base_rating_url}?page={current_page}"
+                                time.sleep(0.1)
+                            except:
+                                break
+                                
                         # 最終整形（ここで確実に1〜3枠を仕分ける）
                         all_matched_dates.sort(reverse=True)
                         sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
@@ -255,7 +255,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
                                     p_match = re.search(r"page=(\d+)", href) or re.search(r"/rating/sale/(\d+)", href)
                                     if p_match: page_data.append((int(p_match.group(1)), href if href.startswith("http") else "https://www.creema.jp" + href))
                                 if page_data: _, last_page_url = max(page_data, key=lambda x: x[0])
-                              except: pass
+                            except: pass
 
                         # 一番古い評価日の解析
                         if last_page_url:
