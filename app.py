@@ -310,96 +310,98 @@ detected_market_total = 170000
 page_status = st.empty()
 
 # 🌟 ステップ1: 商品リンク収集
-    while current_url and len(all_item_elements_data) < max_num:
-        page_status.info(f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています (収集済リンク: {len(all_item_elements_data)}件)")
-        try:
-            response = requests.get(current_url, headers=headers, timeout=10)
-            if response.status_code != 200: break
-            soup = BeautifulSoup(response.content, "html.parser")
-            
-            if page_count == 1:
-                search_count_element = soup.find(string=re.compile(r"検索結果\s*[\d,]+件"))
-                if search_count_element:
-                    match_count = re.search(r"検索結果\s*([\d,]+)件", search_count_element)
-                    if match_count:
-                        detected_market_total = int(match_count.group(1).replace(",", ""))
-            
-            items = soup.select("article.c-item-article")
-            if not items: break
-                
-            for item in items:
-                if len(all_item_elements_data) >= max_num: break
-                title_tag = item.select_one('.c-item-article__name a[href*="/item/"]')
-                if not title_tag: continue
-                    
-                title = title_tag.text.strip() or (title_tag.find("img")["alt"].strip() if title_tag.find("img") else "")
-                link = "https://www.creema.jp" + title_tag["href"]
-                
-                desc_tag = item.select_one(".c-item-article__desc")
-                creator, price = "取得失敗", 0
-                if desc_tag and "/" in desc_tag.text:
-                    parts = desc_tag.text.split("/")
-                    price = int(re.sub(r"\D", "", parts[0])) if parts[0] else 0
-                    creator = parts[1].strip()
-                
-                all_item_elements_data.append({"link": link, "creator": creator, "title": title, "price": price})
-            
-            next_tag = soup.select_one("a.c-pagination__next")
-            if next_tag and "href" in next_tag.attrs:
-                current_url = next_tag["href"] if next_tag["href"].startswith("http") else "https://www.creema.jp" + next_tag["href"]
-                page_count += 1
-                time.sleep(0.5)
-            else:
-                current_url = None
-        except:
-            break
-            
-    page_status.empty()
-    total_found = len(all_item_elements_data)
-    if total_found == 0: return None
+while current_url and len(all_item_elements_data) < max_num:
+    page_status.info(f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています (収集済リンク: {len(all_item_elements_data)}件)")
+    try:
+        response = requests.get(current_url, headers=headers, timeout=10)
+        if response.status_code != 200: break
+        soup = BeautifulSoup(response.content, "html.parser")
         
-    # 🌟 ステップ2: 詳細解析（安全分割システム）
-    status_text = st.empty()
-    progress_bar = st.progress(0)
-    scraped_data = []
-    
-    max_workers = 5 if total_found > 300 else 12
-    batch_size = 150
-    current_idx = 0
-    
-    for b_idx in range(0, total_found, batch_size):
-        batch = all_item_elements_data[b_idx : b_idx + batch_size]
+        if page_count == 1:
+            search_count_element = soup.find(string=re.compile(r"検索結果\s*[\d,]+件"))
+            if search_count_element:
+                match_count = re.search(r"検索結果\s*([\d,]+)件", search_count_element)
+                if match_count:
+                    detected_market_total = int(match_count.group(1).replace(",", ""))
         
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_item = {
-                executor.submit(_internal_fetch_item, item_data, headers, one_month_ago, three_months_ago): item_data 
-                for item_data in batch
-            }
+        items = soup.select("article.c-item-article")
+        if not items: break
             
-            for future in as_completed(future_to_item):
-                result = future.result()
-                current_idx += 1
+        for item in items:
+            if len(all_item_elements_data) >= max_num: break
+            title_tag = item.select_one('.c-item-article__name a[href*="/item/"]')
+            if not title_tag: continue
                 
-                if result: 
-                    if "作品紹介文" not in result: result["作品紹介文"] = "取得失敗"
-                    scraped_data.append(result)
-                
-                progress_bar.progress(min(current_idx / total_found, 1.0))
-                status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
-                
-        if b_idx + batch_size < total_found:
-            status_text.text(f"☕️【安全装置】サーバー負荷軽減のため、5秒間休憩しています...（現在 {current_idx}件完了）")
-            time.sleep(random.uniform(4.5, 5.5))
+            title = title_tag.text.strip() or (title_tag.find("img")["alt"].strip() if title_tag.find("img") else "")
+            link = "https://www.creema.jp" + title_tag["href"]
             
-    progress_bar.empty()
-    status_text.empty()
+            desc_tag = item.select_one(".c-item-article__desc")
+            creator, price = "取得失敗", 0
+            if desc_tag and "/" in desc_tag.text:
+                parts = desc_tag.text.split("/")
+                price = int(re.sub(r"\D", "", parts[0])) if parts[0] else 0
+                creator = parts[1].strip()
+            
+            all_item_elements_data.append({"link": link, "creator": creator, "title": title, "price": price})
+        
+        next_tag = soup.select_one("a.c-pagination__next")
+        if next_tag and "href" in next_tag.attrs:
+            current_url = next_tag["href"] if next_tag["href"].startswith("http") else "https://www.creema.jp" + next_tag["href"]
+            page_count += 1
+            time.sleep(0.5)
+        else:
+            current_url = None
+    except:
+        break
+        
+page_status.empty()
+total_found = len(all_item_elements_data)
+if total_found == 0:
+    st.warning("対象の商品が見つかりませんでした。")
+    st.stop()
     
-    if scraped_data:
-        for i, item in enumerate(scraped_data, 1): 
-            item["No."] = i
-            if "作品紹介文" not in item: item["作品紹介文"] = "取得失敗"
-        return {"items": scraped_data, "market_total": detected_market_total}
-    return None
+# 🌟 ステップ2: 詳細解析（安全分割システム）
+status_text = st.empty()
+progress_bar = st.progress(0)
+scraped_data = []
+
+max_workers = 5 if total_found > 300 else 12
+batch_size = 150
+current_idx = 0
+
+for b_idx in range(0, total_found, batch_size):
+    batch = all_item_elements_data[b_idx : b_idx + batch_size]
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_item = {
+            executor.submit(_internal_fetch_item, item_data, headers, one_month_ago, three_months_ago): item_data 
+            for item_data in batch
+        }
+        
+        for future in as_completed(future_to_item):
+            result = future.result()
+            current_idx += 1
+            
+            if result: 
+                if "作品紹介文" not in result: result["作品紹介文"] = "取得失敗"
+                scraped_data.append(result)
+            
+            progress_bar.progress(min(current_idx / total_found, 1.0))
+            status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
+            
+    if b_idx + batch_size < total_found:
+        status_text.text(f"☕️【安全装置】サーバー負荷軽減のため、5秒間休憩しています...（現在 {current_idx}件完了）")
+        time.sleep(random.uniform(4.5, 5.5))
+        
+progress_bar.empty()
+status_text.empty()
+
+# 🌟 結果の返却（関数の外側なので、returnではなくStreamlit用の変数に入れる形に安全化しました）
+if scraped_data:
+    for i, item in enumerate(scraped_data, 1): 
+        item["No."] = i
+        if "作品紹介文" not in item: item["作品紹介文"] = "取得失敗"
+    analysis_result = {"items": scraped_data, "market_total": detected_market_total}
 
 
 # =============================================
