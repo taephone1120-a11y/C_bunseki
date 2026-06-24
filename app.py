@@ -396,30 +396,40 @@ def scrape_creema_fast(start_url, max_num):
     return None
 
 # =============================================
-#   🚀 ボタン連動・実行処理エリア
+#    🚀 ボタン連動・実行処理エリア
 # =============================================
+# 💡 重複していた古い処理エリアは削除し、
+#    セッション管理を行う以下の正しい処理一本に統合しました。
+
+if "raw_data" not in st.session_state: st.session_state.raw_data = None
+if "market_total" not in st.session_state: st.session_state.market_total = 170000
+if "target_max_items" not in st.session_state: st.session_state.target_max_items = 100
+
 if start_button:
-    if not target_url:
-        st.error("⚠️ URLまたはキーワードを指定してください。")
+    if mode == "一覧URL直貼り" and not target_url:
+        st.error("⚠️ URLを入力してください。")
+    elif mode == "キーワード検索" and not target_url:
+        st.error("⚠️ キーワードを指定してください。")
     else:
-        # LINE通知を送る
-        send_line_notification(search_keyword if mode == "キーワード検索" else target_url, max_items)
+        cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
+        send_line_notification(cond_text, max_items)
+        st.session_state.target_max_items = max_items
         
-        # リサーチ関数を実行
+        # リサーチ関数を実行（スピナー表示を伴う）
         with st.spinner("🔄 Creemaのデータを解析中..."):
-            results = scrape_creema_fast(target_url, max_items)
+            res_dict = scrape_creema_fast(target_url, max_items)
             
-        if results and results["items"]:
-            import pandas as pd
-            df = pd.DataFrame(results["items"])
-            st.success(f"🎉 リサーチ完了！ 全 {len(df)} 件のデータを取得しました。(市場総件数: {results['market_total']}件)")
-            st.dataframe(df)
+        if res_dict:
+            st.session_state.raw_data = res_dict["items"]
+            st.session_state.market_total = res_dict["market_total"]
+            st.success(f"🎉 リサーチ完了！ 全 {len(res_dict['items'])} 件のデータを取得しました。(市場総件数: {res_dict['market_total']:,}件)")
+            st.toast(f"🎉 取得完了しました！（全体総件数: {res_dict['market_total']:,}件）", icon="✅")
         else:
             st.error("❌ データが取得できませんでした。URLやキーワードを再度確認してください。")
 
 
 # =============================================
-#   Excelダウンロード用バイナリ生成
+#    Excelダウンロード用バイナリ生成
 # =============================================
 def convert_df_to_excel(df):
     import re
@@ -472,27 +482,12 @@ def convert_df_to_excel(df):
 
 
 # =============================================
-#   メイン制御とセッション管理
+#    📊 データフィルタリングと画面表示
 # =============================================
-if "raw_data" not in st.session_state: st.session_state.raw_data = None
-if "market_total" not in st.session_state: st.session_state.market_total = 170000
-if "target_max_items" not in st.session_state: st.session_state.target_max_items = 100
-
-if start_button:
-    if mode == "一覧URL直貼り" and not target_url:
-        st.error("⚠️ URLを入力してください。")
-    else:
-        cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
-        send_line_notification(cond_text, max_items)
-        st.session_state.target_max_items = max_items
-        
-        res_dict = scrape_creema_fast(target_url, max_items)
-        if res_dict:
-            st.session_state.raw_data = res_dict["items"]
-            st.session_state.market_total = res_dict["market_total"]
-            st.toast(f"🎉 取得完了しました！（全体総件数: {res_dict['market_total']:,}件）", icon="✅")
-
 if st.session_state.raw_data:
+    import pandas as pd
+    import numpy as np
+    
     df_orig = pd.DataFrame(st.session_state.raw_data)
     df_filter = df_orig.copy()
     
@@ -507,18 +502,10 @@ if st.session_state.raw_data:
     df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
     df_filter["_recent_num"] = pd.to_numeric(df_filter["直近1ヶ月の評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
 
-    # ----------------------------------------------------
-    # 🆕 購入者数に応じた「直近販売日」のマスク（- への書き換え）処理
-    # ----------------------------------------------------
-    # 購入者数が0の場合：販売日1, 2, 3 をすべて「-」に
+    # 購入者数に応じた「直近販売日」のマスク（- への書き換え）処理
     df_filter.loc[df_filter["_buy_num"] == 0, ["直近販売日1", "直近販売日2", "直近販売日3"]] = "-"
-    
-    # 購入者数が1の場合：販売日2, 3 を「-」に
     df_filter.loc[df_filter["_buy_num"] == 1, ["直近販売日2", "直近販売日3"]] = "-"
-    
-    # 購入者数が2の場合：販売日3 を「-」に
     df_filter.loc[df_filter["_buy_num"] == 2, ["直近販売日3"]] = "-"
-    # ----------------------------------------------------
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
@@ -555,9 +542,7 @@ if st.session_state.raw_data:
     if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
     
     def check_sales3_date_range(date_str):
-        # 開始も終了も「未指定(None)」なら、文字データ（3ヶ月以上前など）も含めてすべて表示する
         if filter_sales3_min is None and filter_sales3_max is None: return True
-        # どちらかが指定されている場合は、日付以外の文字データは除外する
         if date_str in ["-", "3ヶ月以上前", "取得失敗"]: return False
         try:
             target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
@@ -600,9 +585,7 @@ if st.session_state.raw_data:
 # =================================================================
 # 👀 絞り込み結果のプレビュー
 # =================================================================
-
 if "final_df" in locals() and final_df is not None and not final_df.empty:
-
     st.subheader("👀 絞り込み結果のプレビュー")
 
     display_df = (
@@ -622,12 +605,11 @@ if "final_df" in locals() and final_df is not None and not final_df.empty:
         }
     )
 
-    # タイトル・紹介文プロンプト用に、検索上位10件を保存
     candidate_items = final_df.head(10).copy()
     st.session_state["candidate_items"] = candidate_items
 
     # =============================================
-    #   📊 売れやすさ計算 (詳細版)
+    #    📊 売れやすさ計算 (詳細版)
     # =============================================
     total_raw_count = len(st.session_state.raw_data)
     st.markdown("---")
@@ -704,23 +686,18 @@ if "final_df" in locals() and final_df is not None and not final_df.empty:
                 </div>
             """, unsafe_allow_html=True)
 
-    # =============================================
-    # 🤖 👑 Gemini作品タイトル提案エリア (復活・修正部分)
-    # =============================================
-# session_state から検索結果を取り出す
+
+# =================================================================
+# 🤖 作品タイトル・紹介文のプロンプト作成エリア
+# =================================================================
 saved_candidate_items = st.session_state.get("candidate_items", None)
 
-# 検索結果がある場合だけ、タイトル・紹介文作成エリアを表示
 if saved_candidate_items is not None and not saved_candidate_items.empty:
-
     candidate_items = saved_candidate_items
 
     st.subheader("🙆 作品タイトル・紹介文のプロンプト作成")
     st.write("市場の人気を参考に、タイトルや紹介文を作成します。")
-
-    st.caption(
-        "作品タイトルや紹介文の精度を上げるために、カテゴリ・素材・サイズ・使いやすさ・使用シーン・こだわりをできるだけ具体的に入力してください。"
-    )
+    st.caption("作品タイトルや紹介文の精度を上げるために、カテゴリ・素材・サイズ・使いやすさ・使用シーン・こだわりをできるだけ具体的に入力してください。")
 
     default_work_description = """商品名：
 例）帆布のトートバッグ／名入れできる木製キーホルダー／刺繍のブローチ／結婚式のウェルカムボード
@@ -775,47 +752,18 @@ if saved_candidate_items is not None and not saved_candidate_items.empty:
         help="分かる範囲で入力してください。空欄があっても大丈夫です。"
     )
 
-    # ここから下に、
-    # 「🚀 検索上位を狙うタイトルプロンプトを作成」ボタン
-    # 「✍️ 作品紹介文（説明文）のプロンプト作成」
-    # を入れる
-        
-# =================================================================
-# 🛍️ ボタン1: 市場10選を分析してタイトルを提案してもらう
-# =================================================================        
-import textwrap
-
-# candidate_items がすでに作られている場合は、session_state に保存しておく
-# ※ 検索・絞り込み処理のあとに candidate_items ができている前提です
-if "candidate_items" in locals() and candidate_items is not None and not candidate_items.empty:
-    st.session_state["candidate_items"] = candidate_items
-
-# session_state から検索結果を取り出す
-saved_candidate_items = st.session_state.get("candidate_items", None)
-
-# 💡 検索後（データが存在する場合）のみエリア全体を表示
-if saved_candidate_items is not None and not saved_candidate_items.empty:
-
-    candidate_items = saved_candidate_items
-
-    generate_btn = st.button(
-        "🚀 検索上位を狙うタイトルプロンプトを作成",
-        type="primary"
-    )
+    # 🛍️ ボタン1: タイトルプロンプト生成
+    import textwrap
+    generate_btn = st.button("🚀 検索上位を狙うタイトルプロンプトを作成", type="primary")
 
     if generate_btn:
         with st.spinner("📝 AI用のプロンプトを作成中..."):
-
-            # 10件の売れ筋データ（candidate_items）からタイトル一覧のテキストを作成
             items_summary = ""
-
             for display_no, (_, row) in enumerate(candidate_items.iterrows(), start=1):
                 item_name = row.get("商品名", "商品名不明")
-                buy_num = row.get("_buy_num", "不明")
-
+                buy_num = row.get("購入者数", "不明")
                 items_summary += f"・人気商品{display_no}: {item_name}（購入者数: {buy_num}人）\n"
 
-            # ChatGPTやGeminiにそのまま貼り付けられる完成形プロンプトを組み立て
             final_prompt = textwrap.dedent(f"""
             あなたは、Creema・minneなどのハンドメイドマーケットで売れる商品ページを分析し、
             検索上位に表示されやすく、かつ購入につながる商品タイトルを作る専門家です。
@@ -834,282 +782,62 @@ if saved_candidate_items is not None and not saved_candidate_items.empty:
             ---
 
             # 重要な前提
-
-            Creemaでは、雰囲気だけのおしゃれなタイトルよりも、
-            「何の商品か」
-            「どんな素材・特徴があるか」
-            「どんな場面で使えるか」
-            「購入前の不安が解消されるか」
-            がタイトル内で分かる商品の方が、検索にも購入にもつながりやすいです。
-
+            Creemaでは、雰囲気だけのおしゃれなタイトルよりも、「何の商品か」「どんな素材・特徴があるか」「どんな場面で使えるか」が分かるタイトルの方が、検索にも購入にもつながりやすいです。
             特に、人気商品には以下の傾向があります。
-
-            ・タイトル前半に、検索されやすいメインキーワードが入っている
-            ・商品カテゴリが一目で分かる
-            ・素材、用途、機能、安心要素が自然に入っている
-            ・「かわいい」「おしゃれ」だけではなく、買う理由が伝わる
-            ・ギフト、普段使い、季節、イベントなどの使用シーンが分かる
-            ・高価格帯の商品は、素材の良さ、手間、希少性、長く使える理由が伝わる
-            ・検索される言葉と、作品の世界観のバランスが取れている
+            ・タイトル前半に検索されやすいキーワードが入っている、商品カテゴリが一目で分かるなど。
 
             ---
-
-            # タイトル作成で重視すること
-
-            ## 検索上位を狙う条件
-
-            ・タイトルの前半に、検索されやすいメインキーワードを入れる
-            ・商品カテゴリが一目で分かる言葉を必ず入れる
-
-            例：
-            アクセサリー、バッグ、財布、ポーチ、インテリア雑貨、食器、洋服、ベビー用品、ペット用品、紙もの、ウェディングアイテム、食品、素材、パーツ など
-
-            ・素材名、色、デザイン特徴、用途、機能、安心要素を自然に入れる
-            ・「かわいい」「きれい」「上品」だけで終わらせない
-            ・タイトルは40〜55文字前後を目安にする
-            ・「｜」「【】」を使って、読みやすく区切る
-            ・重要キーワードはなるべくタイトル前半に置く
-            ・検索されそうな一般名詞を優先し、詩的すぎる言葉だけのタイトルにしない
-
-            ## 購入されやすくする条件
-
-            ・お気に入りだけで終わらず、「今買う理由」が伝わるタイトルにする
-            ・使用シーンが分かる言葉を入れる
-
-            例：
-            誕生日、母の日、父の日、敬老の日、結婚式、出産祝い、新生活、通勤、通学、普段使い、ギフト、プレゼント、自分へのご褒美 など
-
-            ・購入前の不安を減らす言葉を入れる
-
-            例：
-            軽量、洗える、A4対応、名入れ可、サイズ調整可、選べる、送料無料、ラッピング対応、オーダー可、電子レンジ対応、食洗機対応、金属アレルギー対応 など
-
-            ・高価格帯の商品は、素材の良さ、手仕事感、希少性、長く使える理由が伝わるようにする
-            ・食品、美容、健康、天然石、アロマ、スピリチュアル系の商品では、効果効能を断定しすぎず、自然で信頼感のある表現にする
-            ・商品内容と関係のないキーワードは入れない
-
-            ---
-
             # 出力してほしい内容
-
             ## 1. 人気商品のタイトル分析
-
-            以下の観点で、分析してください。
-
-            ### よく使われているキーワード
-
-            人気タイトルの中から、特に重要度が高いキーワードを5〜10個抽出してください。
-
-            それぞれについて、
-            ・なぜ検索に強いのか
-            ・なぜ購入につながりやすいのか
-            を説明してください。
-
-            ### タイトル構成の傾向
-
-            人気商品のタイトルが、どのような順番でキーワードを並べているか分析してください。
-
-            例：
-            ・商品カテゴリ → 素材 → 用途
-            ・素材 → 商品カテゴリ → ギフト訴求
-            ・特徴 → 商品カテゴリ → 安心要素
-            ・【フック】＋商品名＋使用シーン
-            ・名入れ／オーダー要素 → 商品カテゴリ → 記念日訴求
-            ・季節感 → 商品カテゴリ → 暮らしのシーン
-
-            ### 真似すべき点
-
-            出品する作品に取り入れるべき要素を、具体的に教えてください。
-
-            ### 真似しない方がいい点
-
-            人気商品のタイトルの中でも、
-            出品する作品には無理に入れない方がいい要素があれば教えてください。
-
-            ---
-
             ## 2. 出品作品の検索キーワード整理
-
-            出品する作品情報から、タイトルに入れるべきキーワードを分類してください。
-
-            ### メインキーワード
-
-            検索で最も重要な言葉を3〜5個出してください。
-
-            例：
-            商品カテゴリ名、素材名、用途名、モチーフ名、作品ジャンル名など
-
-            ### サブキーワード
-
-            素材、色、形、サイズ、デザイン、雰囲気、機能、使いやすさに関する言葉を5〜10個出してください。
-
-            ### 購入訴求キーワード
-
-            ギフト、普段使い、季節、イベント、悩み解消、安心感、便利さにつながる言葉を5〜10個出してください。
-
-            ### 入れない方がいいキーワード
-
-            商品と関係が薄い、検索には強そうでも誤解を招く言葉があれば教えてください。
-
-            ---
-
-            ## 3. 新作商品タイトル案
-
-            以下の切り口で、合計15案作ってください。
-
-            ### A. 検索上位重視タイトル 5案
-
-            検索されやすいキーワードを前半に入れたタイトルにしてください。
-
-            ### B. 購入率重視タイトル 5案
-
-            使用シーン、ギフト、安心要素、買う理由が伝わるタイトルにしてください。
-
-            ### C. 世界観＋検索バランス型タイトル 5案
-
-            作品の雰囲気やこだわりを残しつつ、検索にも弱くならないタイトルにしてください。
-
-            ---
-
-            # タイトル作成ルール
-
-            ・各タイトルは40〜55文字前後を目安にする
-            ・短すぎるタイトルは避ける
-            ・長すぎて読みにくいタイトルも避ける
-            ・最初の15文字以内に、できるだけ重要キーワードを入れる
-            ・商品カテゴリを必ず入れる
-            ・「｜」「【】」を適度に使い、見やすくする
-            ・同じ言葉を不自然に繰り返さない
-            ・商品内容と違う誇大表現はしない
-            ・効果効能を断定しない
-            ・購入者が安心して買える、上品で信頼感のある表現にする
-            ・人気商品のタイトルをそのままコピーしない
-
-            ---
-
-            ## 4. 一番おすすめのタイトル
-
-            15案の中から、一番おすすめのタイトルを1つ選んでください。
-
-            その理由を、以下の観点で説明してください。
-
-            ・検索に強い理由
-            ・クリックされやすい理由
-            ・購入につながりやすい理由
-            ・出品作品の魅力が伝わる理由
-            ・改善するとしたらどこか
-
-            ---
-
+            ## 3. 新作商品タイトル案（A. 検索上位重視 5案 / B. 購入率重視 5案 / C. バランス型 5案）
+            ## 4. 一番おすすめのタイトルと理由
             ## 5. タイトル改善アドバイス
-
-            最後に、出品者が今後タイトルを作る時に使えるように、
-            この作品に合う「タイトルの型」を3つ作ってください。
-
-            例：
-            ・素材名＋商品カテゴリ｜使用シーン＋安心要素
-            ・商品カテゴリ＋特徴｜ギフト用途＋使いやすさ
-            ・色や雰囲気＋商品カテゴリ｜こだわりポイント＋使用シーン
-            ・名入れ／オーダー要素＋商品カテゴリ｜記念日・ギフト訴求
-            ・季節感＋商品カテゴリ｜暮らしに取り入れる場面
-
-            ---
-
-            注意：
-            分析対象の人気商品タイトルをそのままコピーしないでください。
-            人気商品の「言葉の使い方」「キーワードの並び順」「購入につながる訴求」を参考にしながら、
-            出品する作品に合った自然なタイトルを作ってください。
             """).strip()
 
-            # 完成したプロンプトを表示
             st.subheader("📋 AI用コピーテキストの作成完了")
             st.success("✨ 下の枠内のテキストをすべてコピーして、ChatGPTやGeminiのチャット欄に貼り付けてください。")
-
-            st.text_area(
-                "以下の文章を丸ごとコピーしてください：",
-                value=final_prompt,
-                height=450,
-                key="title_prompt_area"
-            )
+            st.text_area("以下の文章を丸ごとコピーしてください：", value=final_prompt, height=350, key="title_prompt_area")
 
 
-import json
-
-# =================================================================
-# ✍️ ボタン2: 市場10選を分析して作品紹介文を提案してもらう
-# =================================================================
-
-saved_candidate_items = st.session_state.get("candidate_items", None)
-
-if saved_candidate_items is not None and not saved_candidate_items.empty:
-
-    candidate_items = saved_candidate_items
-
+    # ✍️ ボタン2: 作品紹介文プロンプト生成
     st.write("---")
     st.subheader("✍️ 作品紹介文（説明文）のプロンプト作成")
 
     my_product_title = st.text_input(
-        "🏷️ 出品する作品のタイトル（決まっている場合や、上記で決めたタイトルを入力してください）",
+        "🏷️ 出品する作品のタイトル",
         value="",
         help="AIが紹介文を作成する際に、このタイトルとの整合性を意識して文章を作ります。",
         key="my_product_title_input"
     )
 
-    generate_desc_btn = st.button(
-        "🚀 市場10選を分析して作品紹介文プロンプトを作成",
-        type="primary",
-        key="generate_desc_prompt_btn"
-    )
+    generate_desc_btn = st.button("🚀 市場10選を分析して作品紹介文プロンプトを作成", type="primary", key="generate_desc_prompt_btn")
 
     if generate_desc_btn:
         with st.spinner("🕵️‍♂️ 市場10選の作品ページから、紹介文を読み込んでいます（数秒かかります）..."):
-
             descriptions_summary = ""
-
             for display_no, (_, row) in enumerate(candidate_items.iterrows(), start=1):
                 item_name = row.get("商品名", "商品名不明")
-
-                item_url = row.get(
-                    "商品URL",
-                    row.get(
-                        "URL",
-                        row.get(
-                            "url",
-                            row.get("作品URL", None)
-                        )
-                    )
-                )
-
+                item_url = row.get("商品URL", None)
+                
                 if item_url and isinstance(item_url, str) and item_url.startswith("/"):
                     item_url = f"https://www.creema.jp{item_url}"
 
                 cleaned_desc = "（紹介文の取得に失敗しました）"
-
                 if item_url:
                     try:
-                        headers = {
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                          "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                          "Chrome/120.0.0.0 Safari/537.36"
-                        }
-
+                        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
                         response = requests.get(item_url, headers=headers, timeout=10)
-
                         if response.status_code == 200:
                             soup = BeautifulSoup(response.text, "html.parser")
                             desc_element = soup.find("div", class_="p-item-detail-description")
-
                             if desc_element:
                                 raw_text = desc_element.get_text("\n", strip=True)
                                 cleaned_desc = re.sub(r"\n{3,}", "\n\n", raw_text)
-
                     except Exception as e:
                         cleaned_desc = f"（通信エラーにより取得失敗: {str(e)}）"
 
-                descriptions_summary += (
-                    f"■人気商品{display_no}: {item_name}\n"
-                    f"【紹介文】:\n{cleaned_desc}\n\n"
-                )
+                descriptions_summary += f"■人気商品{display_no}: {item_name}\n【紹介文】:\n{cleaned_desc}\n\n"
 
             final_desc_prompt = textwrap.dedent(f"""
             あなたは、Creema・minneなどのハンドメイドマーケットで売れる商品ページを分析し、
@@ -1124,107 +852,44 @@ if saved_candidate_items is not None and not saved_candidate_items.empty:
             ---
 
             【出品する作品の情報】
-            ■作品のタイトル:
-            {my_product_title}
-
-            ■作品の説明・特徴・こだわり:
-            {my_work_description}
+            ■作品のタイトル: {my_product_title}
+            ■作品の説明・特徴・こだわり: {my_work_description}
             ---
 
-            # 重要な前提
-
-            Creemaやminneでは、作品紹介文がただ長いだけでは購入につながりません。
-
-            大切なのは、冒頭で
-            「これは何の商品か」
-            「誰におすすめか」
-            「どんな場面で使えるか」
-            「買う前の不安が解消されるか」
-            がすぐに伝わることです。
-
-            人気商品の紹介文を分析し、
-            出品ページにそのまま使える作品紹介文を3パターン作成してください。
-
-            ## 出力内容
-
+            # 出力内容
             1. 人気商品の紹介文分析
-            ・文章構成の傾向
-            ・購入につながる表現
-            ・お気に入り止まりを防ぐポイント
-            ・今回の作品に取り入れるべき要素
-
             2. 出品作品の魅力整理
-            ・作品の一番の魅力
-            ・想定される購入者
-            ・購入者の悩みや願望
-            ・購入後の未来
-            ・購入前の不安と解消ポイント
-
-            3. 作品紹介文の提案
-            A. 検索キーワード重視
-            B. 購入率重視
-            C. 世界観＋購入訴求バランス型
-
-            4. 検索対策キーワード一覧
-            Creemaやminneで検索されやすいキーワードを20個以上、スペース区切りで出してください。
-
-            ## 文章ルール
-
-            ・冒頭3行で魅力が伝わるようにする
-            ・1〜2文ごとに空行を入れる
-            ・見出しを使ってスマホで読みやすくする
-            ・素材、サイズ、使用シーン、ギフト、注意点を自然に入れる
-            ・効果効能を断定しない
-            ・人気商品の文章をそのままコピーしない
-            ・上品で丁寧、信頼感のある文章にする
+            3. 作品紹介文の提案（3パターン）
+            4. 検索対策キーワード一覧（20個以上）
             """).strip()
 
             st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
             st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
 
-            st.text_area(
-                "以下の文章を丸ごとコピーしてください：",
-                value=final_desc_prompt,
-                height=500,
-                key="desc_prompt_area"
-            )
+            st.text_area("以下の文章を丸ごとコピーしてください：", value=final_desc_prompt, height=400, key="desc_prompt_area")
 
+            import json
             js_safe_prompt = json.dumps(final_desc_prompt)
-
             copy_button_html = f"""
             <div style="margin-top: -10px; margin-bottom: 20px;">
                 <button id="copy-desc-btn" style="
-                    background-color: #FF4B4B;
-                    color: white;
-                    border: none;
-                    padding: 8px 16px;
-                    font-size: 14px;
-                    font-weight: bold;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    transition: background-color 0.3s;
-                    width: 100%;
+                    background-color: #FF4B4B; color: white; border: none; padding: 8px 16px;
+                    font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%;
                 ">📋 このプロンプトをワンクリックでコピーする</button>
             </div>
-
             <script>
             document.getElementById('copy-desc-btn').addEventListener('click', function() {{
                 const textToCopy = {js_safe_prompt};
-
                 navigator.clipboard.writeText(textToCopy).then(function() {{
                     const btn = document.getElementById('copy-desc-btn');
                     btn.innerText = '✅ コピーが完了しました！';
                     btn.style.backgroundColor = '#28a745';
-
                     setTimeout(function() {{
                         btn.innerText = '📋 このプロンプトをワンクリックでコピーする';
                         btn.style.backgroundColor = '#FF4B4B';
                     }}, 2000);
-                }}).catch(function(err) {{
-                    alert('コピーに失敗しました。テキストエリアから直接コピーしてください。');
                 }});
             }});
             </script>
             """
-
             st.components.v1.html(copy_button_html, height=60)
