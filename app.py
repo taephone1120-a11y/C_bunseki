@@ -983,12 +983,6 @@ if saved_candidate_items is not None and not saved_candidate_items.empty:
                 key="title_prompt_area"
             )
 
-else:
-    st.info(
-        "まず上の検索ボタンを押して、市場データを取得してください。"
-        "検索結果が表示されると、タイトル作成用プロンプトのボタンが出ます。"
-    )
-
 
 import json
 
