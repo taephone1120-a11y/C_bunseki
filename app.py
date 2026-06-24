@@ -1,6 +1,7 @@
 import io
 import re
 import time
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from urllib.parse import quote
@@ -9,10 +10,9 @@ import pandas as pd
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
-import re
 
 # =============================================
-#  デザインとヘッダー設定
+#   デザインとヘッダー設定
 # =============================================
 st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
 
@@ -98,98 +98,9 @@ def send_line_notification(keyword_or_url, item_count):
     except: pass
 
 # =============================================
-#   🎯 特定商品の全販売日を取得
-# =============================================
-def fetch_recent_sales_dates(base_rating_url, target_title, required_count, headers, three_months_ago):
-    all_matched_dates = []
-    current_page = 1
-    current_url = base_rating_url
-    max_pages_to_search = 5  
-
-    if required_count <= 0:
-        return []
-
-    # 比較元となる商品ページのタイトルから前後の空白・改行を削り、空白を半角スペース1つに統一
-    clean_target = " ".join(target_title.strip().split())
-
-    while current_url and current_page <= max_pages_to_search:
-        try:
-            res = requests.get(current_url, headers=headers, timeout=8)
-            if res.status_code != 200:
-                break
-            
-            soup = BeautifulSoup(res.content, "html.parser")
-            blocks = soup.select(".p-creator-rating-rating__content")
-            if not blocks:
-                break
-            
-            # ページ内の対象データを一度すべて集める
-            for block in blocks:
-                title_tags = block.select(".p-creator-rating-rating__title a")
-                
-                has_target_item = False
-                for t in title_tags:
-                    clean_review_title = " ".join(t.text.strip().split())
-                    if clean_review_title == clean_target:
-                        has_target_item = True
-                        break
-                
-                if has_target_item:
-                    # 💡 商品ブロックの中にある「別々のレビュー（voice）」を1つずつループ処理
-                    voices = block.select(".p-creator-rating-rating__voice")
-                    for voice in voices:
-                        voice_date_tag = voice.select_one(".p-creator-rating-rating__date")
-                        if voice_date_tag:
-                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", voice_date_tag.text)
-                            if date_match:
-                                date_str = date_match.group(1)
-                                review_date = datetime.strptime(date_str, "%Y.%m.%d")
-                                
-                                if review_date >= three_months_ago:
-                                    # 💡 【ここを修正！】
-                                    # 「すでに同じ日付があるか」のチェックを削除しました。
-                                    # これにより、別々のレビューであれば同じ日付でも正常に2回、3回と追加されます。
-                                    all_matched_dates.append(review_date)
-            
-            # ページ内の全スキャンが終わった時点で、集まった日付を一度最新順に並び替える
-            all_matched_dates.sort(reverse=True)
-            
-            # すでに必要な件数（required_count）が確保できていれば、次ページに進まず終了
-            if len(all_matched_dates) >= required_count:
-                break
-                
-            # ページ内の一番最近（最新）の日付が3ヶ月以上前であれば終了
-            all_page_dates = []
-            for date_tag in soup.select(".p-creator-rating-rating__date"):
-                d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-                if d_match:
-                    all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
-            
-            if all_page_dates:
-                newest_date_on_page = max(all_page_dates)
-                if newest_date_on_page < three_months_ago:
-                    break
-
-            current_page += 1
-            if "?" in base_rating_url:
-                current_url = f"{base_rating_url}&page={current_page}"
-            else:
-                current_url = f"{base_rating_url}?page={current_page}"
-                
-            time.sleep(0.1)
-            
-        except:
-            break
-            
-    # 全ページから集まったすべての日付を、最終的に新しい順に並び替えて、必要な件数だけ切り出す
-    all_matched_dates.sort(reverse=True)
-    return [d.strftime("%Y.%m.%d") for d in all_matched_dates[:required_count]]
-    
-# =============================================
-#   単一商品を詳細解析
+#   メインのスクレイピング制御（自己完結版）
 # =============================================
 def scrape_creema_fast(start_url, max_num):
-    # 💡 必要なライブラリを関数内で完璧にすべて読み込み
     import time
     import random
     import re
@@ -200,7 +111,7 @@ def scrape_creema_fast(start_url, max_num):
     import streamlit as st
 
     # ----------------------------------------------------
-    # 内部専用のデータ取得パーツ（fetch_single_itemをここに合体！）
+    # 💡 【完全内蔵】1件詳細解析用パーツ（外部依存をゼロに設計）
     # ----------------------------------------------------
     def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
         try:
@@ -249,27 +160,69 @@ def scrape_creema_fast(start_url, max_num):
                             matches = re.search(r"（(\d+)件）", rating_link_tag.text)
                             if matches: review = matches.group(1)
                         except: pass
-                    
-                    if review == "-" or not str(review).isdigit():
-                        try:
-                            all_text = detail_soup.get_text()
-                            matches = re.findall(r"[（\(](\d+)[）\)]", all_text)
-                            if matches: review = matches[0]
-                        except: pass
 
                     # 5. 評価ページの解析
                     if rating_link_tag:
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             
-                            # 直近販売日の取得
-                            try:
-                                sorted_dates = fetch_recent_sales_dates(base_rating_url, title, 3, headers, three_months_ago)
-                                for idx in range(3):
-                                    if idx < len(sorted_dates): recent_sales[idx] = sorted_dates[idx]
-                                    else: recent_sales[idx] = "3ヶ月以上前"
-                            except: pass
+                            # --- 💡 [完全内蔵] 直近販売日取得ロジック ---
+                            all_matched_dates = []
+                            current_page = 1
+                            current_url = base_rating_url
+                            clean_target = " ".join(title.strip().split())
                             
+                            while current_url and current_page <= 5:  
+                                try:
+                                    res = requests.get(current_url, headers=headers, timeout=8)
+                                    if res.status_code != 200: break
+                                    
+                                    soup = BeautifulSoup(res.content, "html.parser")
+                                    blocks = soup.select(".p-creator-rating-rating__content")
+                                    if not blocks: break
+                                    
+                                    for block in blocks:
+                                        title_tags = block.select(".p-creator-rating-rating__title a")
+                                        has_target_item = False
+                                        for t in title_tags:
+                                            if " ".join(t.text.strip().split()) == clean_target:
+                                                has_target_item = True
+                                                break
+                                        
+                                        if has_target_item:
+                                            voices = block.select(".p-creator-rating-rating__voice")
+                                            for voice in voices:
+                                                date_tag = voice.select_one(".p-creator-rating-rating__date")
+                                                if date_tag:
+                                                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                                                    if date_match:
+                                                        review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                                        if review_date >= three_months_ago:
+                                                            all_matched_dates.append(review_date)
+                                    
+                                    all_matched_dates.sort(reverse=True)
+                                    if len(all_matched_dates) >= 3: break  
+                                    
+                                    all_page_dates = []
+                                    for date_tag in soup.select(".p-creator-rating-rating__date"):
+                                        d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                                        if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
+                                    if all_page_dates and max(all_page_dates) < three_months_ago: break
+                                    
+                                    current_page += 1
+                                    current_url = f"{base_rating_url}&page={current_page}" if "?" in base_rating_url else f"{base_rating_url}?page={current_page}"
+                                    time.sleep(0.1)
+                                except:
+                                    break
+                            
+                            all_matched_dates.sort(reverse=True)
+                            sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
+                            
+                            for idx in range(3):
+                                if idx < len(sorted_dates): recent_sales[idx] = sorted_dates[idx]
+                                else: recent_sales[idx] = "3ヶ月以上前"
+                            # --------------------------------------------
+
                             # 直近1ヶ月の評価数
                             rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
                             if rating_res.status_code == 200:
@@ -300,7 +253,7 @@ def scrape_creema_fast(start_url, max_num):
                                     if page_data: _, last_page_url = max(page_data, key=lambda x: x[0])
                                 except: pass
 
-                            # 最初の評価日の解析
+                            # 一番古い評価日の解析
                             if last_page_url:
                                 try:
                                     last_page_res = requests.get(last_page_url, headers=headers, timeout=10)
@@ -414,7 +367,6 @@ def scrape_creema_fast(start_url, max_num):
         batch = all_item_elements_data[b_idx : b_idx + batch_size]
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 💡 【解決】合体した内部関数「_internal_fetch_item」を直接呼び出すので絶対エラーになりません！
             future_to_item = {
                 executor.submit(_internal_fetch_item, item_data, headers, one_month_ago, three_months_ago): item_data 
                 for item_data in batch
@@ -445,7 +397,183 @@ def scrape_creema_fast(start_url, max_num):
         return {"items": scraped_data, "market_total": detected_market_total}
     return None
 
-def fetch_single_item
+
+# =============================================
+#   Excelダウンロード用バイナリ生成
+# =============================================
+def convert_df_to_excel(df):
+    import re
+    import io
+    import pandas as pd
+    
+    export_df = df.copy()
+    
+    def remove_illegal_chars(val):
+        if isinstance(val, str):
+            cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", val)
+            return "".join(ch for ch in cleaned if ch.isprintable() or ch in "\n\r\t")
+        return val
+
+    for col in export_df.columns:
+        export_df[col] = export_df[col].apply(remove_illegal_chars)
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        export_df.to_excel(writer, sheet_name="リサーチ結果", index=False)
+        worksheet = writer.sheets["リサーチ結果"]
+        
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        header_font = Font(name="Meiryo", size=11, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
+        data_font = Font(name="Meiryo", size=10)
+        thin_border = Border(left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'), top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9'))
+        
+        for row in worksheet.iter_rows(min_row=1, max_row=len(export_df)+1):
+            for cell in row:
+                cell.border = thin_border
+                if cell.row == 1:
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                else:
+                    cell.font = data_font
+                    if cell.column in [1, 4]: 
+                        cell.alignment = Alignment(horizontal="right", vertical="center")
+                    elif cell.column in [6, 7, 8, 9, 10, 11, 12, 13]: 
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                    else: 
+                        cell.alignment = Alignment(horizontal="left", vertical="center")
+                        
+        for col in worksheet.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            worksheet.column_dimensions[col[0].column_letter].width = min(max(max_len + 3, 10), 50)
+            
+    return output.getvalue()
+
+
+# =============================================
+#   メイン制御とセッション管理
+# =============================================
+if "raw_data" not in st.session_state: st.session_state.raw_data = None
+if "market_total" not in st.session_state: st.session_state.market_total = 170000
+if "target_max_items" not in st.session_state: st.session_state.target_max_items = 100
+
+if start_button:
+    if mode == "一覧URL直貼り" and not target_url:
+        st.error("⚠️ URLを入力してください。")
+    else:
+        cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
+        send_line_notification(cond_text, max_items)
+        st.session_state.target_max_items = max_items
+        
+        res_dict = scrape_creema_fast(target_url, max_items)
+        if res_dict:
+            st.session_state.raw_data = res_dict["items"]
+            st.session_state.market_total = res_dict["market_total"]
+            st.toast(f"🎉 取得完了しました！（全体総件数: {res_dict['market_total']:,}件）", icon="✅")
+
+if st.session_state.raw_data:
+    df_orig = pd.DataFrame(st.session_state.raw_data)
+    df_filter = df_orig.copy()
+    
+    def clean_purchase_count(val):
+        if pd.isna(val) or val == 0: return 0
+        val_str = str(val).strip()
+        num_match = re.search(r"(\d+)", val_str)
+        return int(num_match.group(1)) if num_match else 0
+
+    df_filter["_price_num"] = pd.to_numeric(df_filter["価格(円)"], errors='coerce').fillna(0).astype(int)
+    df_filter["_buy_num"] = df_filter["購入者数"].apply(clean_purchase_count)
+    df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
+    df_filter["_recent_num"] = pd.to_numeric(df_filter["直近1ヶ月の評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
+    
+    st.sidebar.markdown("##### 🪙 金額(円)")
+    col_price1, _, col_price2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
+    filter_price_min = col_price1.number_input("🪙 最小", min_value=0, value=0, key="price_min", label_visibility="collapsed")
+    filter_price_max = col_price2.number_input("🪙 最大", min_value=0, value=None, key="price_max", label_visibility="collapsed")
+        
+    st.sidebar.markdown("##### 🛒 購入者数")
+    col_buy1, _, col_buy2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
+    filter_buy_min = col_buy1.number_input("🛒 最小", min_value=0, value=0, key="buy_min", label_visibility="collapsed")
+    filter_buy_max = col_buy2.number_input("🛒 最大", min_value=0, value=None, key="buy_max", label_visibility="collapsed")
+    
+    st.sidebar.markdown("##### 📅 直近販売日３")
+    col_sales3_1, _, col_sales3_2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
+    filter_sales3_min = col_sales3_1.date_input("📅 開始", value=datetime(2020, 1, 1).date(), max_value=datetime.now().date(), key="sales3_min", label_visibility="collapsed")
+    filter_sales3_max = col_sales3_2.date_input("📅 終了", value=None, max_value=datetime.now().date(), key="sales3_max", label_visibility="collapsed")
+        
+    st.sidebar.markdown("##### 💬 ユーザーの総評価数")
+    col_rev1, _, col_rev2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
+    filter_rev_min = col_rev1.number_input("💬 最小", min_value=0, value=0, key="rev_min", label_visibility="collapsed")
+    filter_rev_max = col_rev2.number_input("💬 最大", min_value=0, value=None, key="rev_max", label_visibility="collapsed")
+    
+    st.sidebar.markdown("##### 📅 直近1ヶ月の総評価数")
+    filter_recent = st.sidebar.selectbox("📅 直近1ヶ月の総評価数", ("すべて", "1件以上", "5件以上", "10件以上", "20件以上"), label_visibility="collapsed")
+
+    query_df = df_filter.copy()
+    if filter_price_min is not None: query_df = query_df[query_df["_price_num"] >= filter_price_min]
+    if filter_price_max is not None: query_df = query_df[query_df["_price_num"] <= filter_price_max]
+    if filter_buy_min is not None: query_df = query_df[query_df["_buy_num"] >= filter_buy_min]
+    if filter_buy_max is not None: query_df = query_df[query_df["_buy_num"] <= filter_buy_max]
+    if filter_rev_min is not None: query_df = query_df[query_df["_rev_num"] >= filter_rev_min]
+    if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
+    
+    def check_sales3_date_range(date_str):
+        if filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None: return True
+        if date_str in ["-", "3ヶ月以上前", "取得失敗"]: return False
+        try:
+            target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
+            return (filter_sales3_min is None or target_dt >= filter_sales3_min) and (filter_sales3_max is None or target_dt <= filter_sales3_max)
+        except: return False
+            
+    query_df = query_df[query_df["直近販売日3"].apply(check_sales3_date_range)]
+    if filter_recent == "1件以上": query_df = query_df[query_df["_recent_num"] >= 1]
+    elif filter_recent == "5件以上": query_df = query_df[query_df["_recent_num"] >= 5]
+    elif filter_recent == "10件以上": query_df = query_df[query_df["_recent_num"] >= 10]
+    elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df["直近1ヶ月の評価数"] == "20件以上")]
+
+    query_df["購入者数"] = query_df["_buy_num"]
+    final_df = query_df.drop(columns=["_price_num", "_buy_num", "_rev_num", "_recent_num"])
+    
+    if "作品紹介文" not in final_df.columns:
+        final_df["作品紹介文"] = "データなし"
+        
+    final_df = final_df.rename(columns={"総評価数": "ユーザーの総評価数", "直近1ヶ月の評価数": "直近1ヶ月の総評価数"})
+    
+    target_columns = [
+        "No.", "作家名", "商品名", "価格(円)", "商品URL", "お気に入り数", "購入者数", 
+        "直近販売日1", "直近販売日2", "直近販売日3", "ユーザーの総評価数", 
+        "直近1ヶ月の総評価数", "一番初めの評価日", "作品紹介文"
+    ]
+    
+    final_df = final_df.reindex(columns=target_columns)
+    if not final_df.empty: final_df["No."] = range(1, len(final_df) + 1)
+        
+    st.success(f"📊 条件に一致した商品: {len(final_df)} 件 / 全件中")
+    excel_data = convert_df_to_excel(final_df)
+    
+    st.download_button(
+        label="📥 絞り込んだデータをExcelでダウンロード",
+        data=excel_data,
+        file_name=f"Creemaリサーチ_絞り込み済_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    
+    st.subheader("👀 絞り込み結果のプレビュー")
+    display_df = final_df.drop(columns=["作品紹介文"]) if "作品紹介文" in final_df.columns else final_df
+    st.dataframe(
+        display_df, 
+        use_container_width=True, 
+        height=350, 
+        hide_index=True,
+        column_config={
+            "商品名": st.column_config.TextColumn("商品名", width=250), 
+            "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")
+        }
+    )
 
     # =============================================
     #   📊 売れやすさ計算 (詳細版)
