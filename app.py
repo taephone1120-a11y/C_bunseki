@@ -502,7 +502,7 @@ if st.session_state.raw_data:
     
     st.sidebar.markdown("##### 📅 直近販売日３")
     col_sales3_1, _, col_sales3_2 = st.sidebar.columns([4.5, 1, 4.5], gap="small")
-    filter_sales3_min = col_sales3_1.date_input("📅 開始", value=datetime(2020, 1, 1).date(), max_value=datetime.now().date(), key="sales3_min", label_visibility="collapsed")
+    filter_sales3_min = col_sales3_1.date_input("📅 開始", value=None, max_value=datetime.now().date(), key="sales3_min", label_visibility="collapsed")
     filter_sales3_max = col_sales3_2.date_input("📅 終了", value=None, max_value=datetime.now().date(), key="sales3_max", label_visibility="collapsed")
         
     st.sidebar.markdown("##### 💬 ユーザーの総評価数")
@@ -521,13 +521,15 @@ if st.session_state.raw_data:
     if filter_rev_min is not None: query_df = query_df[query_df["_rev_num"] >= filter_rev_min]
     if filter_rev_max is not None: query_df = query_df[query_df["_rev_num"] <= filter_rev_max]
     
-    def check_sales3_date_range(date_str):
-        if filter_sales3_min == datetime(2020, 1, 1).date() and filter_sales3_max is None: return True
-        if date_str in ["-", "3ヶ月以上前", "取得失敗"]: return False
-        try:
-            target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
-            return (filter_sales3_min is None or target_dt >= filter_sales3_min) and (filter_sales3_max is None or target_dt <= filter_sales3_max)
-        except: return False
+     def check_sales3_date_range(date_str):
+    # 開始も終了も「未指定(None)」なら、文字データ（3ヶ月以上前など）も含めてすべて表示する
+    if filter_sales3_min is None and filter_sales3_max is None: return True
+    # どちらかが指定されている場合は、日付以外の文字データは除外する
+    if date_str in ["-", "3ヶ月以上前", "取得失敗"]: return False
+    try:
+        target_dt = datetime.strptime(date_str, "%Y.%m.%d").date()
+        return (filter_sales3_min is None or target_dt >= filter_sales3_min) and (filter_sales3_max is None or target_dt <= filter_sales3_max)
+    except: return False
             
     query_df = query_df[query_df["直近販売日3"].apply(check_sales3_date_range)]
     if filter_recent == "1件以上": query_df = query_df[query_df["_recent_num"] >= 1]
