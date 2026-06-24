@@ -166,7 +166,7 @@ def scrape_creema_fast(start_url, max_num):
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             
-                          # --- 💡 [完全内蔵] 直近販売日取得ロジック (構造クリーン版) ---
+                          # --- 💡 [完全内蔵] # --- 💡 [完全内蔵] 直近販売日取得ロジック (構文修正版) ---
                     all_matched_dates = []
                     current_page = 1
                     current_url = base_rating_url
@@ -214,6 +214,7 @@ def scrape_creema_fast(start_url, max_num):
                             current_url = f"{base_rating_url}&page={current_page}" if "?" in base_rating_url else f"{base_rating_url}?page={current_page}"
                             time.sleep(0.1)
                         except:
+                            # 🚨 tryに対応するexceptブロックを正しく配置
                             break
                             
                     # 最終整形（ここで確実に1〜3枠を仕分ける）
