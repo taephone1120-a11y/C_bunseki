@@ -166,62 +166,66 @@ def scrape_creema_fast(start_url, max_num):
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             
-                            # --- 💡 [完全内蔵] 直近販売日取得ロジック ---
-                            all_matched_dates = []
-                            current_page = 1
-                            current_url = base_rating_url
-                            clean_target = " ".join(title.strip().split())
+                          # --- 💡 [完全内蔵] 直近販売日取得ロジック (構造クリーン版) ---
+                    all_matched_dates = []
+                    current_page = 1
+                    current_url = base_rating_url
+                    clean_target = " ".join(title.strip().split())
+                    
+                    while current_url and current_page <= 5:  
+                        try:
+                            res = requests.get(current_url, headers=headers, timeout=8)
+                            if res.status_code != 200: break
                             
-                            while current_url and current_page <= 5:  
-                                try:
-                                    res = requests.get(current_url, headers=headers, timeout=8)
-                                    if res.status_code != 200: break
-                                    
-                                    soup = BeautifulSoup(res.content, "html.parser")
-                                    blocks = soup.select(".p-creator-rating-rating__content")
-                                    if not blocks: break
-                                    
-                                    for block in blocks:
-                                        title_tags = block.select(".p-creator-rating-rating__title a")
-                                        has_target_item = False
-                                        for t in title_tags:
-                                            if " ".join(t.text.strip().split()) == clean_target:
-                                                has_target_item = True
-                                                break
-                                        
-                                        if has_target_item:
-                                            voices = block.select(".p-creator-rating-rating__voice")
-                                            for voice in voices:
-                                                date_tag = voice.select_one(".p-creator-rating-rating__date")
-                                                if date_tag:
-                                                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-                                                    if date_match:
-                                                        review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                        if review_date >= three_months_ago:
-                                                            all_matched_dates.append(review_date)
-                                    
-                                    all_matched_dates.sort(reverse=True)
-                                    if len(all_matched_dates) >= 3: break  
-                                    
-                                    all_page_dates = []
-                                    for date_tag in soup.select(".p-creator-rating-rating__date"):
-                                        d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-                                        if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
-                                    if all_page_dates and max(all_page_dates) < three_months_ago: break
-                                    
-                                    current_page += 1
-                                    current_url = f"{base_rating_url}&page={current_page}" if "?" in base_rating_url else f"{base_rating_url}?page={current_page}"
-                                    time.sleep(0.1)
-                                except:
-                                    break
+                            soup = BeautifulSoup(res.content, "html.parser")
+                            blocks = soup.select(".p-creator-rating-rating__content")
+                            if not blocks: break
                             
+                            for block in blocks:
+                                title_tags = block.select(".p-creator-rating-rating__title a")
+                                has_target_item = False
+                                for t in title_tags:
+                                    if " ".join(t.text.strip().split()) == clean_target:
+                                        has_target_item = True
+                                        break
+                                
+                                # 対象商品だった場合のみ、そのブロックから日付を抽出
+                                if has_target_item:
+                                    date_tag = block.select_one(".p-creator-rating-rating__date")
+                                    if date_tag:
+                                        date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                                        if date_match:
+                                            review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                            if review_date >= three_months_ago:
+                                                all_matched_dates.append(review_date)
+                                                
+                            # ページ内の全ブロックを見終わった後、3件以上集まっていれば終了
                             all_matched_dates.sort(reverse=True)
-                            sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
+                            if len(all_matched_dates) >= 3: break  
                             
-                            for idx in range(3):
-                                if idx < len(sorted_dates): recent_sales[idx] = sorted_dates[idx]
-                                else: recent_sales[idx] = "3ヶ月以上前"
-                            # --------------------------------------------
+                            # 早期終了判定（このページの一番新しい評価すら3ヶ月前なら終了）
+                            all_page_dates = []
+                            for d_tag in soup.select(".p-creator-rating-rating__date"):
+                                d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", d_tag.text)
+                                if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
+                            if all_page_dates and max(all_page_dates) < three_months_ago: break
+                            
+                            current_page += 1
+                            current_url = f"{base_rating_url}&page={current_page}" if "?" in base_rating_url else f"{base_rating_url}?page={current_page}"
+                            time.sleep(0.1)
+                        except:
+                            break
+                            
+                    # 最終整形（ここで確実に1〜3枠を仕分ける）
+                    all_matched_dates.sort(reverse=True)
+                    sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
+                    
+                    # 確実に初期化してから代入する
+                    recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
+                    for idx in range(3):
+                        if idx < len(sorted_dates): 
+                            recent_sales[idx] = sorted_dates[idx]
+                    # --------------------------------------------
 
                             # 直近1ヶ月の評価数
                             rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
