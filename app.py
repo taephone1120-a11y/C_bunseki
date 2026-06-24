@@ -1406,7 +1406,7 @@ if saved_candidate_items is not None and not saved_candidate_items.empty:
 
     # テキストエリアとボタンの表示
     if generate_desc_btn:
-    with st.spinner("🕵️‍♂️ 市場10選の作品ページから、紹介文を読み込んでいます（数秒かかります）..."):
+        with st.spinner("🕵️‍♂️ 市場10選の作品ページから、紹介文を読み込んでいます（数秒かかります）..."):
 
         descriptions_summary = ""
 
