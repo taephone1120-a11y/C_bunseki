@@ -484,7 +484,8 @@ def convert_df_to_excel(df):
 # =============================================
 #    📊 データフィルタリングと画面表示
 # =============================================
-if st.session_state.raw_data:
+# 💡 raw_data が存在し、かつ中身が空でない場合のみ処理を行うよう修正しました。
+if st.session_state.raw_data and len(st.session_state.raw_data) > 0:
     import pandas as pd
     import numpy as np
     
@@ -497,15 +498,34 @@ if st.session_state.raw_data:
         num_match = re.search(r"(\d+)", val_str)
         return int(num_match.group(1)) if num_match else 0
 
-    df_filter["_price_num"] = pd.to_numeric(df_filter["価格(円)"], errors='coerce').fillna(0).astype(int)
-    df_filter["_buy_num"] = df_filter["購入者数"].apply(clean_purchase_count)
-    df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
-    df_filter["_recent_num"] = pd.to_numeric(df_filter["直近1ヶ月の評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
+    # 💡 必要な列が存在することを確認しながら安全に変換します
+    if "価格(円)" in df_filter.columns:
+        df_filter["_price_num"] = pd.to_numeric(df_filter["価格(円)"], errors='coerce').fillna(0).astype(int)
+    else:
+        df_filter["_price_num"] = 0
+
+    if "購入者数" in df_filter.columns:
+        df_filter["_buy_num"] = df_filter["購入者数"].apply(clean_purchase_count)
+    else:
+        df_filter["_buy_num"] = 0
+
+    if "総評価数" in df_filter.columns:
+        df_filter["_rev_num"] = pd.to_numeric(df_filter["総評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
+    else:
+        df_filter["_rev_num"] = 0
+
+    if "直近1ヶ月の評価数" in df_filter.columns:
+        df_filter["_recent_num"] = pd.to_numeric(df_filter["直近1ヶ月の評価数"].str.replace(r"\D", "", regex=True), errors='coerce').fillna(0).astype(int)
+    else:
+        df_filter["_recent_num"] = 0
 
     # 購入者数に応じた「直近販売日」のマスク（- への書き換え）処理
-    df_filter.loc[df_filter["_buy_num"] == 0, ["直近販売日1", "直近販売日2", "直近販売日3"]] = "-"
-    df_filter.loc[df_filter["_buy_num"] == 1, ["直近販売日2", "直近販売日3"]] = "-"
-    df_filter.loc[df_filter["_buy_num"] == 2, ["直近販売日3"]] = "-"
+    # 💡 該当する列が存在する場合のみ実行
+    target_sales_cols = ["直近販売日1", "直近販売日2", "直近販売日3"]
+    if all(col in df_filter.columns for col in target_sales_cols):
+        df_filter.loc[df_filter["_buy_num"] == 0, target_sales_cols] = "-"
+        df_filter.loc[df_filter["_buy_num"] == 1, ["直近販売日2", "直近販売日3"]] = "-"
+        df_filter.loc[df_filter["_buy_num"] == 2, ["直近販売日3"]] = "-"
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🎯 データ絞り込みフィルター")
@@ -549,14 +569,20 @@ if st.session_state.raw_data:
             return (filter_sales3_min is None or target_dt >= filter_sales3_min) and (filter_sales3_max is None or target_dt <= filter_sales3_max)
         except: return False
             
-    query_df = query_df[query_df["直近販売日3"].apply(check_sales3_date_range)]
+    if "直近販売日3" in query_df.columns:
+        query_df = query_df[query_df["直近販売日3"].apply(check_sales3_date_range)]
+        
     if filter_recent == "1件以上": query_df = query_df[query_df["_recent_num"] >= 1]
     elif filter_recent == "5件以上": query_df = query_df[query_df["_recent_num"] >= 5]
     elif filter_recent == "10件以上": query_df = query_df[query_df["_recent_num"] >= 10]
-    elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df["直近1ヶ月の評価数"] == "20件以上")]
+    elif filter_recent == "20件以上": query_df = query_df[(query_df["_recent_num"] >= 20) | (query_df.get("直近1ヶ月の評価数") == "20件以上")]
 
+    # 💡 ここで元の「購入者数」列を、数値化した綺麗なデータに置き換えます
     query_df["購入者数"] = query_df["_buy_num"]
-    final_df = query_df.drop(columns=["_price_num", "_buy_num", "_rev_num", "_recent_num"])
+    
+    # 一時的な計算用列を削除
+    drop_cols = [c for c in ["_price_num", "_buy_num", "_rev_num", "_recent_num"] if c in query_df.columns]
+    final_df = query_df.drop(columns=drop_cols)
     
     if "作品紹介文" not in final_df.columns:
         final_df["作品紹介文"] = "データなし"
@@ -582,109 +608,109 @@ if st.session_state.raw_data:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-# =================================================================
-# 👀 絞り込み結果のプレビュー
-# =================================================================
-if "final_df" in locals() and final_df is not None and not final_df.empty:
-    st.subheader("👀 絞り込み結果のプレビュー")
+    # =================================================================
+    # 👀 絞り込み結果のプレビュー
+    # =================================================================
+    if not final_df.empty:
+        st.subheader("👀 絞り込み結果のプレビュー")
 
-    display_df = (
-        final_df.drop(columns=["作品紹介文"])
-        if "作品紹介文" in final_df.columns
-        else final_df
-    )
+        display_df = (
+            final_df.drop(columns=["作品紹介文"])
+            if "作品紹介文" in final_df.columns
+            else final_df
+        )
 
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        height=350,
-        hide_index=True,
-        column_config={
-            "商品名": st.column_config.TextColumn("商品名", width=250),
-            "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")
-        }
-    )
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            height=350,
+            hide_index=True,
+            column_config={
+                "商品名": st.column_config.TextColumn("商品名", width=250),
+                "商品URL": st.column_config.LinkColumn("商品URL", display_text="ページを開く 🔗")
+            }
+        )
 
-    candidate_items = final_df.head(10).copy()
-    st.session_state["candidate_items"] = candidate_items
+        candidate_items = final_df.head(10).copy()
+        st.session_state["candidate_items"] = candidate_items
 
-    # =============================================
-    #    📊 売れやすさ計算 (詳細版)
-    # =============================================
-    total_raw_count = len(st.session_state.raw_data)
-    st.markdown("---")
-    st.subheader("📊 独立マーケット分析（売れやすさ計算）")
-    
-    if total_raw_count < 10:
-        st.warning("⚠️ 十分な解析を行うには、少なくとも10件以上の商品データが必要です。")
-    else:
-        if st.button("📊 売れやすさ指標を計算する", type="secondary"):
-            st.session_state.show_calculator = True
-            
-        if st.session_state.get("show_calculator", False):
-            total_market_items = max(1, int(st.session_state.market_total))
-            calc_one_month_ago = datetime.now() - timedelta(days=30)
-            calc_three_months_ago = datetime.now() - timedelta(days=90)
-            
-            total_artists_count = len(st.session_state.raw_data)
-            under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0, 0
-            
-            for item in st.session_state.raw_data:
-                try: r_num = int(re.sub(r"\D", "", str(item["総評価数"])))
-                except: r_num = 0
+        # =============================================
+        #    📊 売れやすさ計算 (詳細版)
+        # =============================================
+        total_raw_count = len(st.session_state.raw_data)
+        st.markdown("---")
+        st.subheader("📊 独立マーケット分析（売れやすさ計算）")
+        
+        if total_raw_count < 10:
+            st.warning("⚠️ 十分な解析を行うには、少なくとも10件以上の商品データが必要です。")
+        else:
+            if st.button("📊 売れやすさ指標を計算する", type="secondary"):
+                st.session_state.show_calculator = True
                 
-                s1_str = item["直近販売日1"]
-                is_s1_active_1month, is_s1_active_3months = False, False
-                if s1_str not in ["-", "3ヶ月以上前", "取得失敗"]:
-                    try:
-                        s1_dt = datetime.strptime(s1_str, "%Y.%m.%d")
-                        if s1_dt >= calc_one_month_ago: is_s1_active_1month = True
-                        if s1_dt >= calc_three_months_ago: is_s1_active_3months = True
-                    except: pass
+            if st.session_state.get("show_calculator", False):
+                total_market_items = max(1, int(st.session_state.market_total))
+                calc_one_month_ago = datetime.now() - timedelta(days=30)
+                calc_three_months_ago = datetime.now() - timedelta(days=90)
                 
-                if is_s1_active_3months: total_recent_sales_3months += 1
-                if r_num <= 1000:
-                    under_1000_count += 1
-                    if is_s1_active_1month: active_under_1000_count += 1
+                total_artists_count = len(st.session_state.raw_data)
+                under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0, 0
+                
+                for item in st.session_state.raw_data:
+                    try: r_num = int(re.sub(r"\D", "", str(item["総評価数"])))
+                    except: r_num = 0
+                    
+                    s1_str = item.get("直近販売日1", "-")
+                    is_s1_active_1month, is_s1_active_3months = False, False
+                    if s1_str not in ["-", "3ヶ月以上前", "取得失敗"]:
+                        try:
+                            s1_dt = datetime.strptime(s1_str, "%Y.%m.%d")
+                            if s1_dt >= calc_one_month_ago: is_s1_active_1month = True
+                            if s1_dt >= calc_three_months_ago: is_s1_active_3months = True
+                        except: pass
+                    
+                    if is_s1_active_3months: total_recent_sales_3months += 1
+                    if r_num <= 1000:
+                        under_1000_count += 1
+                        if is_s1_active_1month: active_under_1000_count += 1
 
-            ratio_3months_sales = (total_recent_sales_3months / total_artists_count) if total_artists_count > 0 else 0.0
-            ratio_active_vs_total = (active_under_1000_count / total_artists_count) if total_artists_count > 0 else 0.0
-            ratio_active_vs_general = (active_under_1000_count / under_1000_count) if under_1000_count > 0 else 0.0
+                ratio_3months_sales = (total_recent_sales_3months / total_artists_count) if total_artists_count > 0 else 0.0
+                ratio_active_vs_total = (active_under_1000_count / total_artists_count) if total_artists_count > 0 else 0.0
+                ratio_active_vs_general = (active_under_1000_count / under_1000_count) if under_1000_count > 0 else 0.0
 
-            if ratio_3months_sales <= 0.50:
-                judge_title, color = "❄️ お休み市場（需要低迷、または停滞）", "#F8D7DA"
-                judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}%（基準50%以下）しかありません。市場全体の動きが非常に鈍く、需要が一時的に冷え込んでいるか、季節外れの可能性があります。別のキーワードでのリサーチをお勧めします。"
-                final_score = min(max(int((ratio_3months_sales / 0.50) * 30), 0), 30)
-            elif (ratio_active_vs_total <= 0.15) or (ratio_active_vs_general <= 0.30):
-                judge_title, color = "⚖️ レッドオーシャン（大手が強すぎる市場）", "#FFF3CD"
-                judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを大手が独占しており、一般作家が普通に参入しても埋もれやすい過密市場です。差別化戦略が必須となります。"
-                final_score = min(max(30 + int(min(ratio_active_vs_total/0.15, ratio_active_vs_general/0.30) * 20), 30), 50)
-            else:
-                market_bonus = 35 if total_market_items <= 500 else (20 if total_market_items <= 3000 else (5 if total_market_items <= 20000 else max(-int(np.log10(total_market_items / 20000) * 12), -25)))
-                final_score = min(max(int((ratio_active_vs_general * 60) + 30 + market_bonus), 51), 100) 
-                if final_score >= 75:
-                    judge_title, color = "🔥 激アツ（超おすすめ市場）", "#D4EDDA"
-                    judge_desc = f"全体の競合件数（{total_market_items:,}件）が適正、かつ一般作家の生存率が非常に高い『理想的なお宝市場』です。大手に需要を吸い尽くされておらず、新しく商品を出しても上位表示や即売れを狙えるチャンスが極めて高い状態です。"
+                if ratio_3months_sales <= 0.50:
+                    judge_title, color = "❄️ お休み市場（需要低迷、または停滞）", "#F8D7DA"
+                    judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}%（基準50%以下）しかありません。市場全体の動きが非常に鈍く、需要が一時的に冷え込んでいるか、季節外れの可能性があります。別のキーワードでのリサーチをお勧めします。"
+                    final_score = min(max(int((ratio_3months_sales / 0.50) * 30), 0), 30)
+                elif (ratio_active_vs_total <= 0.15) or (ratio_active_vs_general <= 0.30):
+                    judge_title, color = "⚖️ レッドオーシャン（大手が強すぎる市場）", "#FFF3CD"
+                    judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを大手が独占しており、一般作家が普通に参入しても埋もれやすい過密市場です。差別化戦略が必須となります。"
+                    final_score = min(max(30 + int(min(ratio_active_vs_total/0.15, ratio_active_vs_general/0.30) * 20), 30), 50)
                 else:
-                    judge_title, color = "✨ 狙い目（十分にチャンスあり）", "#CCE5FF"
-                    judge_desc = f"適度に市場が回転しており、一般作家でも十分に売上を立てられる健全な市場です。独自のタイトルワークや見せ方で攻めることで、さらに高い確率でファンを掴めます。"
+                    market_bonus = 35 if total_market_items <= 500 else (20 if total_market_items <= 3000 else (5 if total_market_items <= 20000 else max(-int(np.log10(total_market_items / 20000) * 12), -25)))
+                    final_score = min(max(int((ratio_active_vs_general * 60) + 30 + market_bonus), 51), 100) 
+                    if final_score >= 75:
+                        judge_title, color = "🔥 激アツ（超おすすめ市場）", "#D4EDDA"
+                        judge_desc = f"全体の競合件数（{total_market_items:,}件）が適正、かつ一般作家の生存率が非常に高い『理想的なお宝市場』です。大手に需要を吸い尽くされておらず、新しく商品を出しても上位表示や即売れを狙えるチャンスが極めて高い状態です。"
+                    else:
+                        judge_title, color = "✨ 狙い目（十分にチャンスあり）", "#CCE5FF"
+                        judge_desc = f"適度に市場が回転しており、一般作家でも十分に売上を立てられる健全な市場です。独自のタイトルワークや見せ方で攻めることで、さらに高い確率でファンを掴めます。"
 
-            st.markdown(f"""
-                <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
-                    <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
-                    <h4>判定：{judge_title}</h4>
-                    <p style="font-size:14px; margin-bottom:5px;"><b>🔍 新・判定ロジック算出内訳:</b></p>
-                    <ul>
-                        <li>自動検出された市場総件数: <b>{total_market_items:,} 件</b></li>
-                        <li>📅 <b>直近3ヶ月以内の販売商品割合（基準>50%）: <span style="font-size:15px; font-weight:bold;">{ratio_3months_sales*100:.1f}%</span></b> （{total_recent_sales_3months}件 / {total_artists_count}件中）</li>
-                        <li>解析対象内の一般作家（評価1000以下）: <b>{under_1000_count} 件 / {total_artists_count}件中</b></li>
-                        <li>直近1ヶ月以内に動いている一般作家: <b>{active_under_1000_count} 件</b></li>
-                        <li>📈 <b>対全体比率（基準>15%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_total*100:.1f}%</span></b></li>
-                        <li>🎯 <b>対一般作家比率（基準>30%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_general*100:.1f}%</span></b></li>
-                    </ul>
-                    <p style="font-size:14.5px; line-height:1.6; background:rgba(255,255,255,0.5); padding:10px; border-radius:4px; margin-top:10px;"><b>💡 総評:</b><br>{judge_desc}</p>
-                </div>
-            """, unsafe_allow_html=True)
+                st.markdown(f"""
+                    <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
+                        <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
+                        <h4>判定：{judge_title}</h4>
+                        <p style="font-size:14px; margin-bottom:5px;"><b>🔍 新・判定ロジック算出内訳:</b></p>
+                        <ul>
+                            <li>自動検出された市場総件数: <b>{total_market_items:,} 件</b></li>
+                            <li>📅 <b>直近3ヶ月以内の販売商品割合（基準>50%）: <span style="font-size:15px; font-weight:bold;">{ratio_3months_sales*100:.1f}%</span></b> （{total_recent_sales_3months}件 / {total_artists_count}件中）</li>
+                            <li>解析対象内の一般作家（評価1000以下）: <b>{under_1000_count} 件 / {total_artists_count}件中</b></li>
+                            <li>直近1ヶ月以内に動いている一般作家: <b>{active_under_1000_count} 件</b></li>
+                            <li>📈 <b>対全体比率（基準>15%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_total*100:.1f}%</span></b></li>
+                            <li>🎯 <b>対一般作家比率（基準>30%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_general*100:.1f}%</span></b></li>
+                        </ul>
+                        <p style="font-size:14.5px; line-height:1.6; background:rgba(255,255,255,0.5); padding:10px; border-radius:4px; margin-top:10px;"><b>💡 総評:</b><br>{judge_desc}</p>
+                    </div>
+                """, unsafe_allow_html=True)
 
 
 # =================================================================
@@ -893,3 +919,6 @@ if saved_candidate_items is not None and not saved_candidate_items.empty:
             </script>
             """
             st.components.v1.html(copy_button_html, height=60)
+else:
+    # 💡 初期状態やデータがない時の案内メッセージ
+    st.info("👋 上記の「リサーチ開始」ボタンを押すと、ここにデータの分析結果や絞り込みフィルターが表示されます。")
