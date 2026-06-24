@@ -457,6 +457,15 @@ def scrape_creema_fast(start_url, max_num):
     from datetime import datetime, timedelta
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import streamlit as st
+    import sys
+
+    # 💡 【超重要】並列処理の中で fetch_single_item が迷子になるのを100%防ぐための安全装置
+    _target_func = None
+    if '__main__' in sys.modules and hasattr(sys.modules['__main__'], 'fetch_single_item'):
+        _target_func = sys.modules['__main__'].fetch_single_item
+    else:
+        # 万が一メインモジュールから見つからない場合はグローバル空間から直接探索
+        _target_func = globals().get('fetch_single_item')
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -528,8 +537,9 @@ def scrape_creema_fast(start_url, max_num):
     
     # 元通りの「15スレッド」で、休憩なしで一気に突っ走ります！
     with ThreadPoolExecutor(max_workers=15) as executor:
+        # 💡 確実に見つかった検証済みの関数オブジェクト（_target_func）を直接渡し、NameErrorを完全に防ぎます
         future_to_item = {
-            executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): i 
+            executor.submit(_target_func, item_data, headers, one_month_ago, three_months_ago): i 
             for i, item_data in enumerate(all_item_elements_data)
         }
         for current_idx, future in enumerate(as_completed(future_to_item), 1):
@@ -556,15 +566,17 @@ def scrape_creema_fast(start_url, max_num):
 #   Excelダウンロード用バイナリ生成
 # =============================================
 def convert_df_to_excel(df):
+    import re
+    import io
+    import pandas as pd
+    
     # 💡 コピーを作成し、元のデータを壊さないようにする
     export_df = df.copy()
     
-    # 💡 500件でも絶対にIllegalCharacterErrorを起こさないための文字クリーニング関数
+    # 💡 絶対にIllegalCharacterErrorを起こさないための文字クリーニング関数
     def remove_illegal_chars(val):
         if isinstance(val, str):
-            # Excelで禁止されている文字コード領域（制御文字など）を一括クリア
             cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", val)
-            # さらにopenpyxlがエラーを起こす可能性がある文字を除去
             return "".join(ch for ch in cleaned if ch.isprintable() or ch in "\n\r\t")
         return val
 
@@ -572,7 +584,6 @@ def convert_df_to_excel(df):
     for col in export_df.columns:
         export_df[col] = export_df[col].apply(remove_illegal_chars)
 
-    # 💡 データの書き出し（「作品紹介文」を削除する drop 処理を完全に撤廃しました！）
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         export_df.to_excel(writer, sheet_name="リサーチ結果", index=False)
@@ -593,7 +604,6 @@ def convert_df_to_excel(df):
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 else:
                     cell.font = data_font
-                    # 💡 右寄せ・中央寄せの列番号の判定
                     if cell.column in [1, 4]: 
                         cell.alignment = Alignment(horizontal="right", vertical="center")
                     elif cell.column in [6, 7, 8, 9, 10, 11, 12, 13]: 
@@ -601,7 +611,7 @@ def convert_df_to_excel(df):
                     else: 
                         cell.alignment = Alignment(horizontal="left", vertical="center")
                         
-        # 💡 列幅の自動調整（新しく増えた「作品紹介文」の列もきれいに幅が広がります）
+        # 列幅の自動調整
         for col in worksheet.columns:
             max_len = max(len(str(cell.value or '')) for cell in col)
             worksheet.column_dimensions[col[0].column_letter].width = min(max(max_len + 3, 10), 50)
@@ -623,11 +633,6 @@ if start_button:
         send_line_notification(cond_text, max_items)
         st.session_state.target_max_items = max_items
         
-        # 💡 【重要】プログラムに「fetch_single_itemはこれだよ！」とその場で100%認識させるための安全対策
-        import sys
-        if '__main__' in sys.modules and hasattr(sys.modules['__main__'], 'fetch_single_item'):
-            fetch_single_item = sys.modules['__main__'].fetch_single_item
-        
         # 最速モードのまま実行
         res_dict = scrape_creema_fast(target_url, max_items)
         if res_dict:
@@ -636,6 +641,7 @@ if start_button:
             st.toast(f"🎉 取得完了しました！（全体総件数: {res_dict['market_total']:,}件）", icon="✅")
 
 if st.session_state.raw_data:
+    import pandas as pd
     df_orig = pd.DataFrame(st.session_state.raw_data)
     df_filter = df_orig.copy()
     
@@ -702,21 +708,17 @@ if st.session_state.raw_data:
     query_df["購入者数"] = query_df["_buy_num"]
     final_df = query_df.drop(columns=["_price_num", "_buy_num", "_rev_num", "_recent_num"])
     
-    # 💡 【超重要】もしデータに「作品紹介文」の列がなければ、ここで強制的に列の枠を作る
     if "作品紹介文" not in final_df.columns:
         final_df["作品紹介文"] = "データなし"
         
-    # 💡 表示名を先に変更しておく
     final_df = final_df.rename(columns={"総評価数": "ユーザーの総評価数", "直近1ヶ月の評価数": "直近1ヶ月の総評価数"})
     
-    # 💡 最終的にExcelに出力したい列の名前を正確に定義する
     target_columns = [
         "No.", "作家名", "商品名", "価格(円)", "商品URL", "お気に入り数", "購入者数", 
         "直近販売日1", "直近販売日2", "直近販売日3", "ユーザーの総評価数", 
         "直近1ヶ月の総評価数", "一番初めの評価日", "作品紹介文"
     ]
     
-    # 💡 定義した列の順番通りに再配置する（これで「作品紹介文」が確実に一番右に残ります）
     final_df = final_df.reindex(columns=target_columns)
     if not final_df.empty: final_df["No."] = range(1, len(final_df) + 1)
         
