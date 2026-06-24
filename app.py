@@ -309,10 +309,22 @@ def scrape_creema_fast(start_url, max_num):
 #   メインのスクレイピング制御
 # =============================================
 def scrape_creema_fast(start_url, max_num):
+    # 💡 【エラー根絶の安全対策】必要なライブラリを関数の内側で完璧にすべて読み込みます
+    import time
+    import random
+    import re
+    import requests
+    from bs4 import BeautifulSoup
+    from datetime import datetime, timedelta
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import streamlit as st
+    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
     }
+    
+    # 時間の計算（ここが迷子になっていた原因です）
     today = datetime.now()
     one_month_ago = today - timedelta(days=30)
     three_months_ago = today - timedelta(days=90)
@@ -377,15 +389,15 @@ def scrape_creema_fast(start_url, max_num):
     progress_bar = st.progress(0)
     scraped_data = []
     
-    # 💡 【安全装置①】件数が300件を超える大容量の時は、同時アクセス数を「5」に絞ってサーバーブロックを防ぐ
+    # 件数が300件を超える大容量の時は、同時アクセス数を「5」に絞ってサーバーブロックを防ぐ
     max_workers = 5 if total_found > 300 else 12
     
-    # 💡 【安全装置②】一気に1000件叩くとフリーズするので、150件ずつのグループ（バッチ）に分けて処理する
+    # 一気に1000件叩くとフリーズするので、150件ずつのグループ（バッチ）に分けて処理する
     batch_size = 150
     current_idx = 0
     
     for b_idx in range(0, total_found, batch_size):
-        batch = all_items_slice = all_item_elements_data[b_idx : b_idx + batch_size]
+        batch = all_item_elements_data[b_idx : b_idx + batch_size]
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_item = {
@@ -406,7 +418,7 @@ def scrape_creema_fast(start_url, max_num):
                 progress_bar.progress(min(current_idx / total_found, 1.0))
                 status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
                 
-        # 💡 【安全装置③】150件のグループを1つ処理し終えるたびに、約5秒間の休憩を挟んで通信をリフレッシュする
+        # 150件のグループを1つ処理し終えるたびに、約5秒間の休憩を挟んで通信をリフレッシュする
         if b_idx + batch_size < total_found:
             status_text.text(f"☕️【安全装置】サーバー負荷軽減のため、5秒間休憩しています...（現在 {current_idx}件完了）")
             time.sleep(random.uniform(4.5, 5.5))
