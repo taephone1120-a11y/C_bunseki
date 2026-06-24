@@ -449,9 +449,8 @@ def scrape_creema_fast(start_url, max_num):
 #   メインのスクレイピング制御
 # =============================================
 def scrape_creema_fast(start_url, max_num):
-    # 💡 必要なライブラリを関数内で安全に読み込み
+    # 💡 必要なライブラリを関数内で安全に読み込み（NameError対策）
     import time
-    import random
     import re
     import requests
     from bs4 import BeautifulSoup
@@ -473,7 +472,7 @@ def scrape_creema_fast(start_url, max_num):
     detected_market_total = 170000 
     page_status = st.empty()
     
-    # 🌟 ステップ1: ページをめくりながら商品リンクを収集
+    # 🌟 ステップ1: ページをめくりながら商品リンクを最速で収集
     while current_url and len(all_item_elements_data) < max_num:
         page_status.info(f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています (収集済リンク: {len(all_item_elements_data)}件)")
         try:
@@ -522,42 +521,25 @@ def scrape_creema_fast(start_url, max_num):
     total_found = len(all_item_elements_data)
     if total_found == 0: return None
         
-    # 🌟 ステップ2: 外部の fetch_single_item を使って並列解析（1000件安全対策版）
+    # 🌟 ステップ2: 外部の fetch_single_item を使って一気に高速並列解析（元のスピード重視）
     status_text = st.empty()
     progress_bar = st.progress(0)
     scraped_data = []
     
-    # 大容量の時は同時接続数を「5」に落としてサーバーエラーを防ぐ
-    max_workers = 5 if total_found > 300 else 12
-    batch_size = 150
-    current_idx = 0
-    
-    # 150件ずつのグループに小分けにして実行
-    for b_idx in range(0, total_found, batch_size):
-        batch = all_item_elements_data[b_idx : b_idx + batch_size]
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_item = {
-                executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): item_data 
-                for item_data in batch
-            }
-            
-            for future in as_completed(future_to_item):
-                result = future.result()
-                current_idx += 1
-                
-                if result: 
-                    if "作品紹介文" not in result:
-                        result["作品紹介文"] = "取得失敗"
-                    scraped_data.append(result)
-                
-                progress_bar.progress(min(current_idx / total_found, 1.0))
-                status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
-                
-        # 150件ごとにサーバーを労わるため5秒休憩
-        if b_idx + batch_size < total_found:
-            status_text.text(f"☕️【安全装置】サーバー負荷軽減のため、5秒間休憩しています...（現在 {current_idx}件完了）")
-            time.sleep(random.uniform(4.5, 5.5))
+    # 元通りの「15スレッド」で、休憩なしで一気に突っ走ります！
+    with ThreadPoolExecutor(max_workers=15) as executor:
+        future_to_item = {
+            executor.submit(fetch_single_item, item_data, headers, one_month_ago, three_months_ago): i 
+            for i, item_data in enumerate(all_item_elements_data)
+        }
+        for current_idx, future in enumerate(as_completed(future_to_item), 1):
+            result = future.result()
+            if result: 
+                if "作品紹介文" not in result:
+                    result["作品紹介文"] = "取得失敗"
+                scraped_data.append(result)
+            progress_bar.progress(current_idx / total_found)
+            status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
             
     progress_bar.empty()
     status_text.empty()
