@@ -3,6 +3,8 @@ import re
 import time
 import random
 import requests
+import json
+import textwrap
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -484,98 +486,97 @@ if st.session_state.raw_data is not None:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-        # =============================================
-        #    📊 売れやすさ計算 (詳細版)
-        # =============================================
-        total_raw_count = len(st.session_state.raw_data)
-        st.markdown("---")
-        st.subheader("📊 独立マーケット分析（売れやすさ計算）")
+    # =============================================
+    #    📊 売れやすさ計算 (詳細版)
+    # =============================================
+    total_raw_count = len(st.session_state.raw_data)
+    st.markdown("---")
+    st.subheader("📊 独立マーケット分析（売れやすさ計算）")
         
-        if total_raw_count < 10:
-            st.warning("⚠️ 十分な解析を行うには、少なくとも10件以上の商品データが必要です。")
-        else:
-            if st.button("📊 売れやすさ指標を計算する", type="secondary"):
-                st.session_state.show_calculator = True
+    if total_raw_count < 10:
+        st.warning("⚠️ 十分な解析を行うには、少なくとも10件以上の商品データが必要です。")
+    else:
+        if st.button("📊 売れやすさ指標を計算する", type="secondary"):
+            st.session_state.show_calculator = True
                 
-            if st.session_state.get("show_calculator", False):
-                total_market_items = max(1, int(st.session_state.market_total))
-                calc_one_month_ago = datetime.now() - timedelta(days=30)
-                calc_three_months_ago = datetime.now() - timedelta(days=90)
+        if st.session_state.get("show_calculator", False):
+            total_market_items = max(1, int(st.session_state.market_total))
+            calc_one_month_ago = datetime.now() - timedelta(days=30)
+            calc_three_months_ago = datetime.now() - timedelta(days=90)
                 
-                total_artists_count = len(st.session_state.raw_data)
-                under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0, 0
+            total_artists_count = len(st.session_state.raw_data)
+            under_1000_count, active_under_1000_count, total_recent_sales_3months = 0, 0, 0
                 
-                for item in st.session_state.raw_data:
-                    try: r_num = int(re.sub(r"\D", "", str(item["総評価数"])))
-                    except: r_num = 0
+            for item in st.session_state.raw_data:
+                try: r_num = int(re.sub(r"\D", "", str(item["総評価数"])))
+                except: r_num = 0
                     
-                    s1_str = item.get("直近販売日1", "-")
-                    is_s1_active_1month, is_s1_active_3months = False, False
-                    if s1_str not in ["-", "3ヶ月以上前", "取得失敗"]:
-                        try:
-                            s1_dt = datetime.strptime(s1_str, "%Y.%m.%d")
-                            if s1_dt >= calc_one_month_ago: is_s1_active_1month = True
-                            if s1_dt >= calc_three_months_ago: is_s1_active_3months = True
-                        except: pass
+                s1_str = item.get("直近販売日1", "-")
+                is_s1_active_1month, is_s1_active_3months = False, False
+                if s1_str not in ["-", "3ヶ月以上前", "取得失敗"]:
+                    try:
+                        s1_dt = datetime.strptime(s1_str, "%Y.%m.%d")
+                        if s1_dt >= calc_one_month_ago: is_s1_active_1month = True
+                        if s1_dt >= calc_three_months_ago: is_s1_active_3months = True
+                    except: pass
                     
-                    if is_s1_active_3months: total_recent_sales_3months += 1
-                    if r_num <= 1000:
-                        under_1000_count += 1
-                        if is_s1_active_1month: active_under_1000_count += 1
+                if is_s1_active_3months: total_recent_sales_3months += 1
+                if r_num <= 1000:
+                    under_1000_count += 1
+                    if is_s1_active_1month: active_under_1000_count += 1
 
-                ratio_3months_sales = (total_recent_sales_3months / total_artists_count) if total_artists_count > 0 else 0.0
-                ratio_active_vs_total = (active_under_1000_count / total_artists_count) if total_artists_count > 0 else 0.0
-                ratio_active_vs_general = (active_under_1000_count / under_1000_count) if under_1000_count > 0 else 0.0
+            ratio_3months_sales = (total_recent_sales_3months / total_artists_count) if total_artists_count > 0 else 0.0
+            ratio_active_vs_total = (active_under_1000_count / total_artists_count) if total_artists_count > 0 else 0.0
+            ratio_active_vs_general = (active_under_1000_count / under_1000_count) if under_1000_count > 0 else 0.0
 
-                if ratio_3months_sales <= 0.50:
-                    judge_title, color = "❄️ お休み市場（需要低迷、または停滞）", "#F8D7DA"
-                    judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}%（基準50%以下）しかありません。市場全体の動きが非常に鈍く、需要が一時的に冷え込んでいるか、季節外れの可能性があります。別のキーワードでのリサーチをお勧めします。"
-                    final_score = min(max(int((ratio_3months_sales / 0.50) * 30), 0), 30)
-                elif (ratio_active_vs_total <= 0.15) or (ratio_active_vs_general <= 0.30):
-                    judge_title, color = "⚖️ レッドオーシャン（大手が強すぎる市場）", "#FFF3CD"
-                    judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを大手が独占しており、一般作家が普通に参入しても埋もれやすい過密市場です。差別化戦略が必須となります。"
-                    final_score = min(max(30 + int(min(ratio_active_vs_total/0.15, ratio_active_vs_general/0.30) * 20), 30), 50)
+            if ratio_3months_sales <= 0.50:
+                judge_title, color = "❄️ お休み市場（需要低迷、または停滞）", "#F8D7DA"
+                judge_desc = f"直近3ヶ月以内に販売が動いている商品が、市場全体の {ratio_3months_sales*100:.1f}%（基準50%以下）しかありません。市場全体の動きが非常に鈍く、需要が一時的に冷え込んでいるか、季節外れの可能性があります。別のキーワードでのリサーチをお勧めします。"
+                final_score = min(max(int((ratio_3months_sales / 0.50) * 30), 0), 30)
+            elif (ratio_active_vs_total <= 0.15) or (ratio_active_vs_general <= 0.30):
+                judge_title, color = "⚖️ レッドオーシャン（大手が強すぎる市場）", "#FFF3CD"
+                judge_desc = f"直近1ヶ月以内に売れている一般作家の割合が『全体に対して {ratio_active_vs_total*100:.1f}%（基準15%以下）』または『一般作家の中で {ratio_active_vs_general*100:.1f}%（基準30%以下）』となっています。上位や需要のほとんどを大手が独占しており、一般作家が普通に参入しても埋もれやすい過密市場です。差別化戦略が必須となります。"
+                final_score = min(max(30 + int(min(ratio_active_vs_total/0.15, ratio_active_vs_general/0.30) * 20), 30), 50)
+            else:
+                market_bonus = 35 if total_market_items <= 500 else (20 if total_market_items <= 3000 else (5 if total_market_items <= 20000 else max(-int(np.log10(total_market_items / 20000) * 12), -25)))
+                final_score = min(max(int((ratio_active_vs_general * 60) + 30 + market_bonus), 51), 100) 
+                if final_score >= 75:
+                    judge_title, color = "🔥 激アツ（超おすすめ市場）", "#D4EDDA"
+                    judge_desc = f"全体の競合件数（{total_market_items:,}件）が適正、かつ一般作家の生存率が非常に高い『理想的なお宝市場』です。大手に需要を吸い尽くされておらず、新しく商品を出しても上位表示や即売れを狙えるチャンスが極めて高い状態です。"
                 else:
-                    market_bonus = 35 if total_market_items <= 500 else (20 if total_market_items <= 3000 else (5 if total_market_items <= 20000 else max(-int(np.log10(total_market_items / 20000) * 12), -25)))
-                    final_score = min(max(int((ratio_active_vs_general * 60) + 30 + market_bonus), 51), 100) 
-                    if final_score >= 75:
-                        judge_title, color = "🔥 激アツ（超おすすめ市場）", "#D4EDDA"
-                        judge_desc = f"全体の競合件数（{total_market_items:,}件）が適正、かつ一般作家の生存率が非常に高い『理想的なお宝市場』です。大手に需要を吸い尽くされておらず、新しく商品を出しても上位表示や即売れを狙えるチャンスが極めて高い状態です。"
-                    else:
-                        judge_title, color = "✨ 狙い目（十分にチャンスあり）", "#CCE5FF"
-                        judge_desc = f"適度に市場が回転しており、一般作家でも十分に売上を立てられる健全な市場です。独自のタイトルワークや見せ方で攻めることで、さらに高い確率でファンを掴めます。"
+                    judge_title, color = "✨ 狙い目（十分にチャンスあり）", "#CCE5FF"
+                    judge_desc = f"適度に市場が回転しており、一般作家でも十分に売上を立てられる健全な市場です。独自のタイトルワークや見せ方で攻めることで、さらに高い確率でファンを掴めます。"
 
-                st.markdown(f"""
-                    <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
-                        <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
-                        <h4>判定：{judge_title}</h4>
-                        <p style="font-size:14px; margin-bottom:5px;"><b>🔍 新・判定ロジック算出内訳:</b></p>
-                        <ul>
-                            <li>自動検出された市場総件数: <b>{total_market_items:,} 件</b></li>
-                            <li>📅 <b>直近3ヶ月以内の販売商品割合（基準>50%）: <span style="font-size:15px; font-weight:bold;">{ratio_3months_sales*100:.1f}%</span></b> （{total_recent_sales_3months}件 / {total_artists_count}件中）</li>
-                            <li>解析対象内の一般作家（評価1000以下）: <b>{under_1000_count} 件 / {total_artists_count}件中</b></li>
-                            <li>直近1ヶ月以内に動いている一般作家: <b>{active_under_1000_count} 件</b></li>
-                            <li>📈 <b>対全体比率（基準>15%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_total*100:.1f}%</span></b></li>
-                            <li>🎯 <b>対一般作家比率（基準>30%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_general*100:.1f}%</span></b></li>
-                        </ul>
-                        <p style="font-size:14.5px; line-height:1.6; background:rgba(255,255,255,0.5); padding:10px; border-radius:4px; margin-top:10px;"><b>💡 総評:</b><br>{judge_desc}</p>
-                    </div>
-                """, unsafe_allow_html=True)
+            st.markdown(f"""
+                <div class="metric-card" style="background-color: {color}; border-left-color: #111111;">
+                    <h3 style="margin-top:0;">分析結果スコア: <span style="font-size:36px; font-weight:bold;">{final_score}</span> / 100点</h3>
+                    <h4>判定：{judge_title}</h4>
+                    <p style="font-size:14px; margin-bottom:5px;"><b>🔍 新・判定ロジック算出内訳:</b></p>
+                    <ul>
+                        <li>自動検出された市場総件数: <b>{total_market_items:,} 件</b></li>
+                        <li>📅 <b>直近3ヶ月以内の販売商品割合（基準>50%）: <span style="font-size:15px; font-weight:bold;">{ratio_3months_sales*100:.1f}%</span></b> （{total_recent_sales_3months}件 / {total_artists_count}件中）</li>
+                        <li>解析対象内の一般作家（評価1000以下）: <b>{under_1000_count} 件 / {total_artists_count}件中</b></li>
+                        <li>直近1ヶ月以内に動いている一般作家: <b>{active_under_1000_count} 件</b></li>
+                        <li>📈 <b>対全体比率（基準>15%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_total*100:.1f}%</span></b></li>
+                        <li>🎯 <b>対一般作家比率（基準>30%）: <span style="font-size:15px; font-weight:bold;">{ratio_active_vs_general*100:.1f}%</span></b></li>
+                    </ul>
+                    <p style="font-size:14.5px; line-height:1.6; background:rgba(255,255,255,0.5); padding:10px; border-radius:4px; margin-top:10px;"><b>💡 総評:</b><br>{judge_desc}</p>
+                </div>
+            """, unsafe_allow_html=True)
 
 
-# =================================================================
-# 🤖 作品タイトル・紹介文のプロンプト作成エリア
-# =================================================================
-saved_candidate_items = st.session_state.get("candidate_items", None)
+    # =================================================================
+    # 🤖 作品タイトル・紹介文のプロンプト作成エリア
+    # =================================================================
+    # 本来のデータテーブル (filtered_df) をプロンプト生成のソースとして利用します
+    if not filtered_df.empty:
+        candidate_items = filtered_df.head(10) # 検索上位10選を対象に設定
 
-if saved_candidate_items is not None and not saved_candidate_items.empty:
-    candidate_items = saved_candidate_items
+        st.subheader("🙆 作品タイトル・紹介文のプロンプト作成")
+        st.write("市場の人気を参考に、タイトルや紹介文を作成します。")
+        st.caption("作品タイトルや紹介文の精度を上げるために、カテゴリ・素材・サイズ・使いやすさ・使用シーン・こだわりをできるだけ具体的に入力してください。")
 
-    st.subheader("🙆 作品タイトル・紹介文のプロンプト作成")
-    st.write("市場の人気を参考に、タイトルや紹介文を作成します。")
-    st.caption("作品タイトルや紹介文の精度を上げるために、カテゴリ・素材・サイズ・使いやすさ・使用シーン・こだわりをできるだけ具体的に入力してください。")
-
-    default_work_description = """商品名：
+        default_work_description = """商品名：
 例）帆布のトートバッグ／名入れできる木製キーホルダー／刺繍のブローチ／結婚式のウェルカムボード
 
 商品カテゴリ：
@@ -615,160 +616,142 @@ if saved_candidate_items is not None and not saved_candidate_items.empty:
 例）名入れやラッピング対応ができるため、誕生日や記念日のプレゼントにもおすすめです。
 
 価格に見合う理由：
-例）丈夫な素材を使っている、手作業に時間をかけている、長く使える、オーダー対応ができる、希少な素材を使っている など
+例）丈夫な素材を使っている、手作業に時間をかけている、長く使える、オーダー対応ができる、希少な素材充使っている など
 
 作品に込めた想い：
 例）毎日の暮らしの中で、使うたびに少し気分が上がるような作品を目指して作りました。
 """
 
-    my_work_description = st.text_area(
-        "📝 あなたの作品の説明・特徴・こだわり",
-        value=default_work_description,
-        height=420,
-        help="分かる範囲で入力してください。空欄があっても大丈夫です。"
-    )
+        my_work_description = st.text_area(
+            "📝 あなたの作品の説明・特徴・こだわり",
+            value=default_work_description,
+            height=420,
+            help="分かる範囲で入力してください。空欄があっても大丈夫です。"
+        )
 
-    # 🛍️ ボタン1: タイトルプロンプト生成
-    import textwrap
-    generate_btn = st.button("🚀 検索上位を狙うタイトルプロンプトを作成", type="primary")
+        # 🛍️ ボタン1: タイトルプロンプト生成
+        generate_btn = st.button("🚀 検索上位を狙うタイトルプロンプトを作成", type="primary")
 
-    if generate_btn:
-        with st.spinner("📝 AI用のプロンプトを作成中..."):
-            items_summary = ""
-            for display_no, (_, row) in enumerate(candidate_items.iterrows(), start=1):
-                item_name = row.get("商品名", "商品名不明")
-                buy_num = row.get("購入者数", "不明")
-                items_summary += f"・人気商品{display_no}: {item_name}（購入者数: {buy_num}人）\n"
+        if generate_btn:
+            with st.spinner("📝 AI用のプロンプトを作成中..."):
+                items_summary = ""
+                for display_no, (_, row) in enumerate(candidate_items.iterrows(), start=1):
+                    item_name = row.get("商品名", "商品名不明")
+                    buy_num = row.get("購入者数", "不明")
+                    items_summary += f"・人気商品{display_no}: {item_name}（購入者数: {buy_num}人）\n"
 
-            final_prompt = textwrap.dedent(f"""
-            あなたは、Creema・minneなどのハンドメイドマーケットで売れる商品ページを分析し、
-            検索上位に表示されやすく、かつ購入につながる商品タイトルを作る専門家です。
+                final_prompt = textwrap.dedent(f"""
+                あなたは、Creema・minneなどのハンドメイドマーケットで売れる商品ページを分析し、
+                検索上位に表示されやすく、かつ購入につながる商品タイトルを作る専門家です。
 
-            以下の【分析対象：人気商品のタイトル一覧】と【出品する作品の情報】をもとに、
-            Creemaで検索されやすく、クリックされやすく、購入されやすい商品タイトルを作成してください。
+                以下の【分析対象：人気商品のタイトル一覧】と【出品する作品の情報】をもとに、
+                Creemaで検索されやすく、クリックされやすく、購入されやすい商品タイトルを作成してください。
 
-            ---
-            【分析対象：人気商品のタイトル一覧】
-            {items_summary}
-            ---
+                ---
+                【分析対象：人気商品のタイトル一覧】
+                {items_summary}
+                ---
 
-            【出品する作品の情報】
-            ■作品の説明・特徴・こだわり:
-            {my_work_description}
-            ---
+                【出品する作品の情報】
+                ■作品の説明・特徴・こだわり:
+                {my_work_description}
+                ---
 
-            # 重要な前提
-            Creemaでは、雰囲気だけのおしゃれなタイトルよりも、「何の商品か」「どんな素材・特徴があるか」「どんな場面で使えるか」が分かるタイトルの方が、検索にも購入にもつながりやすいです。
-            特に、人気商品には以下の傾向があります。
-            ・タイトル前半に検索されやすいキーワードが入っている、商品カテゴリが一目で分かるなど。
+                # 重要な前提
+                Creemaでは、雰囲気だけのおしゃれなタイトルよりも、「何の商品か」「どんな素材・特徴があるか」「どんな場面で使えるか」が分かるタイトルの方が、検索にも購入にもつながりやすいです。
+                特に、人気商品には以下の傾向があります。
+                ・タイトル前半に検索されやすいキーワードが入っている、商品カテゴリが一目で分かるなど。
 
-            ---
-            # 出力してほしい内容
-            ## 1. 人気商品のタイトル分析
-            ## 2. 出品作品の検索キーワード整理
-            ## 3. 新作商品タイトル案（A. 検索上位重視 5案 / B. 購入率重視 5案 / C. バランス型 5案）
-            ## 4. 一番おすすめのタイトルと理由
-            ## 5. タイトル改善アドバイス
-            """).strip()
+                ---
+                # 出力してほしい内容
+                ## 1. 人気商品のタイトル分析
+                ## 2. 出品作品の検索キーワード整理
+                ## 3. 新作商品タイトル案（A. 検索上位重視 5案 / B. 購入率重視 5案 / C. バランス型 5案）
+                ## 4. 一番おすすめのタイトルと理由
+                ## 5. タイトル改善アドバイス
+                """).strip()
 
-            st.subheader("📋 AI用コピーテキストの作成完了")
-            st.success("✨ 下の枠内のテキストをすべてコピーして、ChatGPTやGeminiのチャット欄に貼り付けてください。")
-            st.text_area("以下の文章を丸ごとコピーしてください：", value=final_prompt, height=350, key="title_prompt_area")
+                st.subheader("📋 AI用コピーテキストの作成完了")
+                st.success("✨ 下の枠内のテキストをすべてコピーして、ChatGPTやGeminiのチャット欄に貼り付けてください。")
+                st.text_area("以下の文章を丸ごとコピーしてください：", value=final_prompt, height=350, key="title_prompt_area")
 
 
-    # ✍️ ボタン2: 作品紹介文プロンプト生成
-    st.write("---")
-    st.subheader("✍️ 作品紹介文（説明文）のプロンプト作成")
+        # ✍️ ボタン2: 作品紹介文プロンプト生成
+        st.write("---")
+        st.subheader("✍️ 作品紹介文（説明文）のプロンプト作成")
 
-    my_product_title = st.text_input(
-        "🏷️ 出品する作品のタイトル",
-        value="",
-        help="AIが紹介文を作成する際に、このタイトルとの整合性を意識して文章を作ります。",
-        key="my_product_title_input"
-    )
+        my_product_title = st.text_input(
+            "🏷️ 出品する作品のタイトル",
+            value="",
+            help="AIが紹介文を作成する際に、このタイトルとの整合性を意識して文章を作ります。",
+            key="my_product_title_input"
+        )
 
-    generate_desc_btn = st.button("🚀 市場10選を分析して作品紹介文プロンプトを作成", type="primary", key="generate_desc_prompt_btn")
+        generate_desc_btn = st.button("🚀 市場10選を分析して作品紹介文プロンプトを作成", type="primary", key="generate_desc_prompt_btn")
 
-    if generate_desc_btn:
-        with st.spinner("🕵️‍♂️ 市場10選の作品ページから、紹介文を読み込んでいます（数秒かかります）..."):
-            descriptions_summary = ""
-            for display_no, (_, row) in enumerate(candidate_items.iterrows(), start=1):
-                item_name = row.get("商品名", "商品名不明")
-                item_url = row.get("商品URL", None)
-                
-                if item_url and isinstance(item_url, str) and item_url.startswith("/"):
-                    item_url = f"https://www.creema.jp{item_url}"
+        if generate_desc_btn:
+            with st.spinner("🕵️‍♂️ 市場10選の作品ページから、紹介文を読み込んでいます（数秒かかります）..."):
+                descriptions_summary = ""
+                for display_no, (_, row) in enumerate(candidate_items.iterrows(), start=1):
+                    item_name = row.get("商品名", "商品名不明")
+                    item_url = row.get("商品URL", None)
+                    
+                    if item_url and isinstance(item_url, str) and item_url.startswith("/"):
+                        item_url = f"https://www.creema.jp{item_url}"
 
-                cleaned_desc = "（紹介文の取得に失敗しました）"
-                if item_url:
-                    try:
-                        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-                        response = requests.get(item_url, headers=headers, timeout=10)
-                        if response.status_code == 200:
-                            soup = BeautifulSoup(response.text, "html.parser")
-                            desc_element = soup.find("div", class_="p-item-detail-description")
-                            if desc_element:
-                                raw_text = desc_element.get_text("\n", strip=True)
-                                cleaned_desc = re.sub(r"\n{3,}", "\n\n", raw_text)
-                    except Exception as e:
-                        cleaned_desc = f"（通信エラーにより取得失敗: {str(e)}）"
+                    cleaned_desc = "（紹介文の取得に失敗しました）"
+                    if item_url:
+                        try:
+                            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                            response = requests.get(item_url, headers=headers, timeout=10)
+                            if response.status_code == 200:
+                                soup = BeautifulSoup(response.text, "html.parser")
+                                desc_element = soup.find("div", class_="p-item-detail-description")
+                                if desc_element:
+                                    raw_text = desc_element.get_text("\n", strip=True)
+                                    cleaned_desc = re.sub(r"\n{3,}", "\n\n", raw_text)
+                        except Exception as e:
+                            cleaned_desc = f"（通信エラーにより取得失敗: {str(e)}）"
 
-                descriptions_summary += f"■人気商品{display_no}: {item_name}\n【紹介文】:\n{cleaned_desc}\n\n"
+                    descriptions_summary += f"■人気商品{display_no}: {item_name}\n【紹介文】:\n{cleaned_desc}\n\n"
 
-            final_desc_prompt = textwrap.dedent(f"""
-            あなたは、Creema・minneなどのハンドメイドマーケットで売れる商品ページを分析し、
-            検索上位に表示されやすく、かつ購入につながる作品紹介文を作る専門家です。
+                final_desc_prompt = textwrap.dedent(f"""
+                ...（中略。文字数制限のため内部で完全版を統合済み）...
+                """).strip()
 
-            以下の【分析対象：人気商品の紹介文一覧】と【出品する作品の情報】をもとに、
-            お気に入りだけで終わらず、購入につながりやすい作品紹介文を作成してください。
+                # 元のコードで意図されていた完全なプロンプトを作成
+                final_desc_prompt = f"あなたは、Creema・minneなどのハンドメイドマーケットで売れる商品ページを分析し、\n検索上位に表示されやすく、かつ購入につながる作品紹介文を作る専門家です。\n\n以下の【分析対象：人気商品の紹介文一覧】と【出品する作品の情報】をもとに、\nお気に入りだけで終わらず、購入につながりやすい作品紹介文を作成してください。\n\n---\n【分析対象：人気商品の紹介文一覧】\n{descriptions_summary}\n---\n\n【出品する作品の情報】\n■作品のタイトル: {my_product_title}\n■作品の説明・特徴・こだわり: {my_work_description}\n---\n\n# 出力内容\n1. 人気商品の紹介文分析\n2. 出品作品の魅力整理\n3. 作品紹介文の提案（3パターン）\n4. 検索対策キーワード一覧（20個以上）"
 
-            ---
-            【分析対象：人気商品の紹介文一覧】
-            {descriptions_summary}
-            ---
+                st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
+                st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
 
-            【出品する作品の情報】
-            ■作品のタイトル: {my_product_title}
-            ■作品の説明・特徴・こだわり: {my_work_description}
-            ---
+                st.text_area("以下の文章を丸ごとコピーしてください：", value=final_desc_prompt, height=400, key="desc_prompt_area")
 
-            # 出力内容
-            1. 人気商品の紹介文分析
-            2. 出品作品の魅力整理
-            3. 作品紹介文の提案（3パターン）
-            4. 検索対策キーワード一覧（20個以上）
-            """).strip()
-
-            st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
-            st.success("✨ 作品紹介文用のプロンプトが完成しました！下の枠内のテキストをすべてコピーして、ChatGPTやGeminiに貼り付けてください。")
-
-            st.text_area("以下の文章を丸ごとコピーしてください：", value=final_desc_prompt, height=400, key="desc_prompt_area")
-
-            import json
-            js_safe_prompt = json.dumps(final_desc_prompt)
-            copy_button_html = f"""
-            <div style="margin-top: -10px; margin-bottom: 20px;">
-                <button id="copy-desc-btn" style="
-                    background-color: #FF4B4B; color: white; border: none; padding: 8px 16px;
-                    font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%;
-                ">📋 このプロンプトをワンクリックでコピーする</button>
-            </div>
-            <script>
-            document.getElementById('copy-desc-btn').addEventListener('click', function() {{
-                const textToCopy = {js_safe_prompt};
-                navigator.clipboard.writeText(textToCopy).then(function() {{
-                    const btn = document.getElementById('copy-desc-btn');
-                    btn.innerText = '✅ コピーが完了しました！';
-                    btn.style.backgroundColor = '#28a745';
-                    setTimeout(function() {{
-                        btn.innerText = '📋 このプロンプトをワンクリックでコピーする';
-                        btn.style.backgroundColor = '#FF4B4B';
-                    }}, 2000);
+                js_safe_prompt = json.dumps(final_desc_prompt)
+                copy_button_html = f"""
+                <div style="margin-top: -10px; margin-bottom: 20px;">
+                    <button id="copy-desc-btn" style="
+                        background-color: #FF4B4B; color: white; border: none; padding: 8px 16px;
+                        font-size: 14px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%;
+                    ">📋 このプロンプトをワンクリックでコピーする</button>
+                </div>
+                <script>
+                document.getElementById('copy-desc-btn').addEventListener('click', function() {{
+                    const textToCopy = {js_safe_prompt};
+                    navigator.clipboard.writeText(textToCopy).then(function() {{
+                        const btn = document.getElementById('copy-desc-btn');
+                        btn.innerText = '✅ コピーが完了しました！';
+                        btn.style.backgroundColor = '#28a745';
+                        setTimeout(function() {{
+                            btn.innerText = '📋 このプロンプトをワンクリックでコピーする';
+                            btn.style.backgroundColor = '#FF4B4B';
+                        }}, 2000);
+                    }});
                 }});
-            }});
-            </script>
-            """
-            st.components.v1.html(copy_button_html, height=60)
+                </script>
+                """
+                st.components.v1.html(copy_button_html, height=60)
+    else:
+        st.info("👋 上記の「リサーチ開始」ボタンを押すと、ここにデータの分析結果や絞り込みフィルターが表示されます。")
 else:
-    # 💡 初期状態やデータがない時の案内メッセージ
     st.info("👋 上記の「リサーチ開始」ボタンを押すと、ここにデータの分析結果や絞り込みフィルターが表示されます。")
