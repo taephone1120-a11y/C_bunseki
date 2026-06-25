@@ -76,7 +76,7 @@ else:
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=10, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
-# 🌟 フィルターの初期値を「制限なし（全表示）」に修正
+# 🌟 フィルターエリア
 st.sidebar.markdown('---')
 st.sidebar.header("📊 表示データの絞り込み")
 
@@ -84,7 +84,17 @@ st.sidebar.header("📊 表示データの絞り込み")
 past_limit_date = datetime.strptime("2000-01-01", "%Y-%m-%d").date()
 future_limit_date = datetime.strptime("2030-12-31", "%Y-%m-%d").date()
 
-# 1. 購入者数
+# ✨ 1. 価格（一番上に追加）
+st.sidebar.markdown("**価格(円)**")
+col_price1, col_price_tilde, col_price2 = st.sidebar.columns([4, 1, 4])
+with col_price1:
+    min_price = st.number_input("価格（最小）", min_value=0, value=0, label_visibility="collapsed")
+with col_price_tilde:
+    st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
+with col_price2:
+    max_price = st.number_input("価格（最大）", min_value=0, value=99999, label_visibility="collapsed")
+
+# 2. 購入者数
 st.sidebar.markdown("**購入者数**")
 col_buy1, col_buy_tilde, col_buy2 = st.sidebar.columns([4, 1, 4])
 with col_buy1:
@@ -94,7 +104,7 @@ with col_buy_tilde:
 with col_buy2:
     max_buy = st.number_input("購入者数（最大）", min_value=0, value=99999, label_visibility="collapsed")
 
-# 2. 直近販売日１
+# 3. 直近販売日１
 st.sidebar.markdown("**直近販売日１**")
 col_d1_1, col_d1_tilde, col_d1_2 = st.sidebar.columns([4, 1, 4])
 with col_d1_1:
@@ -104,7 +114,7 @@ with col_d1_tilde:
 with col_d1_2:
     max_date1 = st.date_input("直近販売日1（最大）", value=future_limit_date, label_visibility="collapsed")
 
-# 3. 直近販売日３
+# 4. 直近販売日３
 st.sidebar.markdown("**直近販売日３**")
 col_d3_1, col_d3_tilde, col_d3_2 = st.sidebar.columns([4, 1, 4])
 with col_d3_1:
@@ -114,7 +124,7 @@ with col_d3_tilde:
 with col_d3_2:
     max_date3 = st.date_input("直近販売日3（最大）", value=future_limit_date, label_visibility="collapsed")
 
-# 4. 総評価数
+# 5. 総評価数
 st.sidebar.markdown("**総評価数**")
 col_rev1, col_rev_tilde, col_rev2 = st.sidebar.columns([4, 1, 4])
 with col_rev1:
@@ -438,6 +448,7 @@ if st.session_state.raw_data is not None:
     raw_df = pd.DataFrame(st.session_state.raw_data)
     
     # 数値変換の安全処理
+    raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors='coerce').fillna(0).astype(int)
     raw_df["購入者数"] = pd.to_numeric(raw_df["購入者数"], errors='coerce').fillna(0).astype(int)
     raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').fillna(0).astype(int)
 
@@ -454,19 +465,21 @@ if st.session_state.raw_data is not None:
     is_min_date3_default = (min_date3 == past_limit_date)
 
     def filter_row(row):
-        # 1. 購入者数と総評価数のチェック
+        # ✨ 1. 価格のチェック
+        if not (min_price <= row["価格(円)"] <= max_price): return False
+
+        # 2. 購入者数と総評価数のチェック
         if not (min_buy <= row["購入者数"] <= max_buy): return False
         if not (min_rev <= row["総評価数"] <= max_rev): return False
         
-        # 2. 直近販売日1のチェック
+        # 3. 直近販売日1のチェック
         d1 = parse_to_date(row["直近販売日1"])
         if d1:
             if not (min_date1 <= d1 <= max_date1): return False
         else:
-            # 日付に変換できない（3ヶ月以上前など）場合、初期状態のままであれば通過させる
             if not is_min_date1_default: return False
             
-        # 3. 直近販売日3のチェック
+        # 4. 直近販売日3のチェック
         d3 = parse_to_date(row["直近販売日3"])
         if d3:
             if not (min_date3 <= d3 <= max_date3): return False
