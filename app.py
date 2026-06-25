@@ -242,20 +242,18 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         
         # レビューページ解析
         rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
-        if rating_link_tag:
+
         print("========== 商品解析開始 ==========")
         print("商品名:", title)
         print("商品URL:", link)
-
-        # レビューページ解析
-        rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
         print("rating_link_tag:", rating_link_tag.get("href") if rating_link_tag else "なし")
 
         if rating_link_tag:
             href_attr = rating_link_tag["href"]
             base_rating_url = href_attr if href_attr.startswith("http") else "https://www.creema.jp" + href_attr
-            if "?" in base_rating_url: base_rating_url = base_rating_url.split("?")[0]
-            
+            if "?" in base_rating_url:
+                base_rating_url = base_rating_url.split("?")[0]
+
             all_found_dates = []
             seen_review_keys = set()
 
