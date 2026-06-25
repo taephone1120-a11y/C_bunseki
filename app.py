@@ -259,29 +259,31 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             print(f"[{title[:15]}...] レビュー探索開始")
 
             for current_page in range(1, 6):  # 5ページまで探索
-                page_url = f"{base_rating_url}?page={current_page}"
-                print(f" - 取得URL: {page_url}")
+    page_url = f"{base_rating_url}?page={current_page}"
+    print(f" - 取得URL: {page_url}")
 
-                r_res = requests.get(page_url, headers=headers, timeout=10)
-                if r_res.status_code != 200:
-                    break
+    r_res = requests.get(page_url, headers=headers, timeout=10)
 
-                r_soup = BeautifulSoup(r_res.content, "html.parser")
+    if r_res.status_code != 200:
+        print(f" - {current_page}ページ目: ステータスコード {r_res.status_code} のため終了")
+        break
 
-                # 外側のレビュー1件単位だけを優先して取得
-                blocks = r_soup.select(".p-creator-rating-list__item")
+    r_soup = BeautifulSoup(r_res.content, "html.parser")
 
-                # もし上のセレクタで取れない場合だけ、旧セレクタを使う
-                if not blocks:
-                    blocks = r_soup.select(".p-creator-rating-rating__content")
+    # 外側のレビュー1件単位だけを優先して取得
+    blocks = r_soup.select(".p-creator-rating-list__item")
 
-                if not blocks:
-　　　　　　　　　　    print(f" - {current_page}ページ目: レビューブロックが0件のため終了")
-    　　　　　　　　　　　break
+    # もし上のセレクタで取れない場合だけ、旧セレクタを使う
+    if not blocks:
+        blocks = r_soup.select(".p-creator-rating-rating__content")
 
-　　　　　　　　　　　　print(f" - {current_page}ページ目: レビューブロック {len(blocks)}件")
+    if not blocks:
+        print(f" - {current_page}ページ目: レビューブロックが0件のため終了")
+        break
 
-　　　　　　　　　　　　found_in_page = 0
+    print(f" - {current_page}ページ目: レビューブロック {len(blocks)}件")
+
+    found_in_page = 0
 
                 for block in blocks:
                     # レビュー内の商品リンクを取得
