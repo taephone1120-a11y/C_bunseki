@@ -241,26 +241,23 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                 fav_text = re.sub(r"\D", "", fav_tag.text)
                 favorite = int(fav_text) if fav_text else 0
             
-        # ✨ 購入者数の新ロジック（「〇人購入」「10人以上購入」を正規表現で走査）
-        # ページ全体のテキストから対象パターンを検索
-        page_text = soup.get_text()
-        # 半角スペース(または空白文字) + 数字か10人以上 + 人購入
-        buy_match = re.search(r"\s*(\d+|10人以上)人購入", page_text)
+        # ✨ 購入者数のピンポイント取得ロジック
+        purchase_display = "0人" # 初期値
         
-        if buy_match:
-            purchase_display = f"{buy_match.group(1)}人購入"
-        else:
-            # タグ単位でも個別に精査
-            found_buy = False
-            for item in soup.select(".p-item-detail-info__item, div, span"):
-                if "購入" in item.text:
-                    m = re.search(r"(\d+|10人以上)人購入", item.text)
-                    if m:
-                        purchase_display = f"{m.group(1)}人購入"
-                        found_buy = True
-                        break
-            if not found_buy:
-                purchase_display = "0人"
+        # 指定されたクラスをターゲットに取得
+        buy_container = soup.select_one(".p-item-detail-info__item--left")
+        if buy_container:
+            text = buy_container.get_text(strip=True)
+            # 「10人以上購入」または「3人購入」という文字列から数字部分を抽出
+            if "10人以上購入" in text:
+                purchase_display = "10人以上"
+            elif "人購入" in text:
+                match = re.search(r"(\d+)人購入", text)
+                if match:
+                    purchase_display = f"{match.group(1)}人"
+        
+        # フィルタリング用に数値化する際は別途「購入者数(数値)」カラムを扱うか、
+        # 既存のフィルタ関数で「10人以上」を10として扱う処理を維持します
             
         rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
         if rating_link_tag:
