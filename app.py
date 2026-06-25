@@ -180,7 +180,6 @@ def convert_df_to_excel(df):
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 else:
                     cell.font = data_font
-                    # Excel内でURLをクリック可能にするためのHYPERLINK設定
                     if cell.column == 5 and cell.value and str(cell.value).startswith("http"):
                         cell.hyperlink = cell.value
                         cell.font = Font(name="Meiryo", size=10, color="0563C1", underline="single")
@@ -224,23 +223,44 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         if desc_tag:
             description_text = desc_tag.text.strip()
             
-        # ✨ お気に入り数の新ロジック修正
-        fav_tag = soup.select_one(".js-like-item-number")
-        if fav_tag:
-            fav_text = re.sub(r"\D", "", fav_tag.text)
-            favorite = int(fav_text) if fav_text else 0
-            
-        # ✨ 購入者数の新ロジック修正
-        buy_tag = soup.select_one(".p-item-detail-info__item--left, .p-item-detail-info__item")
-        if buy_tag and ("購入" in buy_tag.text):
-            purchase_display = buy_tag.text.replace("\n", "").strip()
+        # ✨ お気に入り数の新ロジック（「お気に入りに追加」テキストからアプローチ）
+        fav_btn = soup.find(lambda tag: tag.name in ["button", "a"] and "お気に入りに追加" in tag.text)
+        if fav_btn:
+            # ボタン内、または直下の子要素から数字のみを取り出す
+            num_part = fav_btn.select_one(".js-like-item-number, b, span")
+            if num_part:
+                fav_text = re.sub(r"\D", "", num_part.text)
+                favorite = int(fav_text) if fav_text else 0
+            else:
+                fav_text = re.sub(r"\D", "", fav_btn.text)
+                favorite = int(fav_text) if fav_text else 0
         else:
-            # 別のクラス名や構造の予備チェック
-            all_info_items = soup.select(".p-item-detail-info__item")
-            for item in all_info_items:
+            # 予備：従来のクラス名での一括チェック
+            fav_tag = soup.select_one(".js-like-item-number, .c-favorite-btn__count")
+            if fav_tag:
+                fav_text = re.sub(r"\D", "", fav_tag.text)
+                favorite = int(fav_text) if fav_text else 0
+            
+        # ✨ 購入者数の新ロジック（「〇人購入」「10人以上購入」を正規表現で走査）
+        # ページ全体のテキストから対象パターンを検索
+        page_text = soup.get_text()
+        # 半角スペース(または空白文字) + 数字か10人以上 + 人購入
+        buy_match = re.search(r"\s*(\d+|10人以上)人購入", page_text)
+        
+        if buy_match:
+            purchase_display = f"{buy_match.group(1)}人購入"
+        else:
+            # タグ単位でも個別に精査
+            found_buy = False
+            for item in soup.select(".p-item-detail-info__item, div, span"):
                 if "購入" in item.text:
-                    purchase_display = item.text.replace("\n", "").strip()
-                    break
+                    m = re.search(r"(\d+|10人以上)人購入", item.text)
+                    if m:
+                        purchase_display = f"{m.group(1)}人購入"
+                        found_buy = True
+                        break
+            if not found_buy:
+                purchase_display = "0人"
             
         rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
         if rating_link_tag:
@@ -284,7 +304,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     time.sleep(0.1)
                 
                 all_found_dates.sort(reverse=True)
-                if Paradox := all_found_dates:
+                if all_found_dates:
                     for idx, d_obj in enumerate(all_found_dates[:3]):
                         recent_sales[idx] = d_obj.strftime("%Y.%m.%d")
             except:
@@ -466,9 +486,10 @@ if st.session_state.raw_data is not None:
     
     # 数値変換の安全処理
     raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors='coerce').fillna(0).astype(int)
+    raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors='coerce').fillna(0).astype(int)
     raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').fillna(0).astype(int)
 
-    # ✨ 購入者数の数値化（フィルタリング用）
+    # 購入者数の数値化（フィルタリング用）
     def parse_buyer_count(val):
         if not isinstance(val, str): return 0
         if "10人以上" in val: return 10
@@ -491,7 +512,7 @@ if st.session_state.raw_data is not None:
         # 1. 価格のチェック
         if not (min_price <= row["価格(円)"] <= max_price): return False
 
-        # 2. 購入者数のチェック（新ロジック対応）
+        # 2. 購入者数のチェック
         buyer_num = parse_buyer_count(row["購入者数"])
         if not (min_buy <= buyer_num <= max_buy): return False
         
@@ -523,7 +544,7 @@ if st.session_state.raw_data is not None:
         
     st.markdown(f"**現在の表示件数:** {len(filtered_df)} 件 / 全体 {len(raw_df)} 件")
     
-    # 🌟 画面表示のテーブルで商品URLをクリック可能なリンクにする設定
+    # 画面表示のテーブルで商品URLをクリック可能なリンクにする設定
     st.dataframe(
         filtered_df, 
         use_container_width=True, 
