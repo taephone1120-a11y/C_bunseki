@@ -264,7 +264,7 @@ def scrape_creema_fast(start_url, max_num):
                             
                             st.write(f"📦【デバッグ】ソート後のデータトップ3: {sorted_dates}")
                             
-                            final_sales_list = ["バグ", "バグ", "バグ"]
+                            final_sales_list = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
                             total_found = len(sorted_dates)
                             
                             if total_found == 0 and current_page > 10:
