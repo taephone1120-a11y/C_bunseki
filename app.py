@@ -76,7 +76,7 @@ else:
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=10, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
-# 🌟 フィルターの入力欄をサイドバーの下部へ配置
+# 🌟 フィルターの中身（初期設定値）をもとに戻しました
 st.sidebar.markdown('---')
 st.sidebar.header("📊 表示データの絞り込み")
 min_rev = st.sidebar.number_input("最小総評価数", min_value=0, value=0, step=10)
@@ -397,11 +397,11 @@ if start_button:
 if st.session_state.raw_data is not None:
     raw_df = pd.DataFrame(st.session_state.raw_data)
     
-    # 🌟 確実に数値変換をかけてから処理
+    # 確実に数値変換をかけてから処理
     raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').fillna(0).astype(int)
     raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors='coerce').fillna(0).astype(int)
     
-    # サイドバーに定義されたフィルター変数 (min_rev, max_rev, min_fav, max_fav) に基づいてフィルタリング
+    # サイドバーのフィルターに基づいてデータを抽出
     filtered_df = raw_df[
         (raw_df["総評価数"] >= min_rev) & (raw_df["総評価数"] <= max_rev) &
         (raw_df["お気に入り数"] >= min_fav) & (raw_df["お気に入り数"] <= max_fav)
