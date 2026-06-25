@@ -181,11 +181,22 @@ def scrape_creema_fast(start_url, max_num):
                             if matches: review = matches.group(1)
                         except: pass
 
-# 5. 評価ページの解析（ヒット数カウント表示版）
+# 5. 評価ページの解析（エラー強制可視化版）
                     if rating_link_tag:
                         try:
-                            # 1. ベースとなるURLの整形
-                            base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
+                            # 💡 デバッグ：rating_link_tagの正体を調べる
+                            # st.write(f"🔍 rating_link_tagの型: {type(rating_link_tag)}")
+                            
+                            # タグオブジェクトの場合と、すでに文字列（URL）の場合の両方に対応させる
+                            if isinstance(rating_link_tag, str):
+                                href = rating_link_tag
+                            else:
+                                href = rating_link_tag.get("href", "")
+                                
+                            if not href:
+                                st.error("❌ 評価ページのリンク（href）が取得できませんでした。")
+                                
+                            base_rating_url = "https://www.creema.jp" + href if not href.startswith("http") else href
                             if "?" in base_rating_url:
                                 base_rating_url = base_rating_url.split("?")[0]
                             
@@ -196,10 +207,9 @@ def scrape_creema_fast(start_url, max_num):
                             current_url = base_rating_url
                             clean_target = " ".join(title.strip().split())
                             
-                            # ✨ 各ページでのヒット数を記録する辞書
                             page_hit_counts = {}
                             
-                            # 2. ページめくりループ（最大10ページ）
+                            # ページめくりループ（最大10ページ）
                             while current_url and current_page <= 10:  
                                 try:
                                     res = requests.get(current_url, headers=headers, timeout=8)
@@ -209,7 +219,6 @@ def scrape_creema_fast(start_url, max_num):
                                     blocks = soup.select(".p-creator-rating-rating__content")
                                     if not blocks: break
                                     
-                                    # このページでのヒット数を初期化
                                     page_hit_counts[f"{current_page}ページ目"] = 0
                                     
                                     for block in blocks:
@@ -221,7 +230,6 @@ def scrape_creema_fast(start_url, max_num):
                                                 break
                                         
                                         if found_in_this_block:
-                                            # ✨ ヒット数を1増やす
                                             page_hit_counts[f"{current_page}ページ目"] += 1
                                             
                                             voice_tag = block.select_one(".p-creator-rating-rating__voice")
@@ -249,17 +257,16 @@ def scrape_creema_fast(start_url, max_num):
                                     current_page += 1
                                     current_url = f"{base_rating_url}?page={current_page}"
                                     time.sleep(0.1)
-                                except:
+                                except Exception as e:
+                                    st.error(f"❌ ループ内エラー: {e}")
                                     break
                             
-                            # ✨【画面表示】カウント結果をStreamlit画面に青枠で強制出力
+                            # 画面にヒット数を表示
                             st.info(f"📊【名前ヒット数チェック】\n作品名: {title}\n結果: {page_hit_counts}")
                             
-                            # 3. 回収した日付を新しい順にソートして抽出
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
-                            # 4. 出力文字の判定
                             recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
                             total_found = len(sorted_dates)
                             
@@ -270,7 +277,9 @@ def scrape_creema_fast(start_url, max_num):
                                 if total_found >= 2: recent_sales[1] = sorted_dates[1]
                                 if total_found >= 3: recent_sales[2] = sorted_dates[2]
                                         
-                        except: pass
+                        except Exception as main_error: 
+                            # ✨【超重要】エラーが起きたら、隠さずに真っ赤なボックスで画面に出す
+                            st.error(f"🚨【解析大元のエラー】商品名「{title}」の処理中にクラッシュしました。\nエラー内容: {main_error}")
 
 # 6. 直近1ヶ月の評価数
                     rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
