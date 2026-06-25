@@ -258,7 +258,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             # --- 探索ログ追加 ---
             print(f"[{title[:15]}...] レビュー探索開始")
 
-                for current_page in range(1, 6):  # 5ページまで探索
+            for current_page in range(1, 6):  # 5ページまで探索
                 page_url = f"{base_rating_url}?page={current_page}"
                 print(f" - 取得URL: {page_url}")
 
