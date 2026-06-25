@@ -181,7 +181,7 @@ def scrape_creema_fast(start_url, max_num):
                             if matches: review = matches.group(1)
                         except: pass
 
-# 5. 評価ページの解析（フラグ制御・エラー絶対回避版）
+# 5. 評価ページの解析（ヒット数カウント表示版）
                     if rating_link_tag:
                         try:
                             # 1. ベースとなるURLの整形
@@ -196,6 +196,9 @@ def scrape_creema_fast(start_url, max_num):
                             current_url = base_rating_url
                             clean_target = " ".join(title.strip().split())
                             
+                            # ✨ 各ページでのヒット数を記録する辞書
+                            page_hit_counts = {}
+                            
                             # 2. ページめくりループ（最大10ページ）
                             while current_url and current_page <= 10:  
                                 try:
@@ -206,18 +209,21 @@ def scrape_creema_fast(start_url, max_num):
                                     blocks = soup.select(".p-creator-rating-rating__content")
                                     if not blocks: break
                                     
+                                    # このページでのヒット数を初期化
+                                    page_hit_counts[f"{current_page}ページ目"] = 0
+                                    
                                     for block in blocks:
-                                        # ✨ 1つのレビューブロック内で処理を1回だけにするためのフラグ
                                         found_in_this_block = False
-                                        
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         for t in title_tags:
                                             if " ".join(t.text.strip().split()) == clean_target:
                                                 found_in_this_block = True
-                                                break # タイトルリンクが複数あってもループを抜ける
+                                                break
                                         
-                                        # 商品名が一致し、まだこのブロックで日付を回収していない場合のみ処理
                                         if found_in_this_block:
+                                            # ✨ ヒット数を1増やす
+                                            page_hit_counts[f"{current_page}ページ目"] += 1
+                                            
                                             voice_tag = block.select_one(".p-creator-rating-rating__voice")
                                             if voice_tag:
                                                 date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
@@ -228,7 +234,6 @@ def scrape_creema_fast(start_url, max_num):
                                                         if review_date >= local_three_months_ago:
                                                             all_matched_dates.append(review_date)
                                                             
-                                    # ページを最後まで全回収した時点で3つ以上あれば終了
                                     if len(all_matched_dates) >= 3:
                                         break
                                     
@@ -247,6 +252,9 @@ def scrape_creema_fast(start_url, max_num):
                                 except:
                                     break
                             
+                            # ✨【画面表示】カウント結果をStreamlit画面に青枠で強制出力
+                            st.info(f"📊【名前ヒット数チェック】\n作品名: {title}\n結果: {page_hit_counts}")
+                            
                             # 3. 回収した日付を新しい順にソートして抽出
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
@@ -262,9 +270,7 @@ def scrape_creema_fast(start_url, max_num):
                                 if total_found >= 2: recent_sales[1] = sorted_dates[1]
                                 if total_found >= 3: recent_sales[2] = sorted_dates[2]
                                         
-                        except: 
-                            # ⚠️ もし万が一ここで全体エラーが起きても、同じ日付で3つ埋まるのを防ぐ防衛策
-                            recent_sales = ["エラー発生", "3ヶ月以上前", "3ヶ月以上前"]
+                        except: pass
 
 # 6. 直近1ヶ月の評価数
                     rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
