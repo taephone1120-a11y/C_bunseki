@@ -114,207 +114,184 @@ def scrape_creema_fast(start_url, max_num):
     # 💡 【完全内蔵】1件詳細解析用パーツ
     # ----------------------------------------------------
     def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
-        try:
-            link = item_data["link"]
-            creator = item_data["creator"]
-            title = item_data["title"]
-            price = item_data["price"]
+    """
+    1件の商品URLに対して詳細情報を解析する関数
+    """
+    link = item_data["link"]
+    creator = item_data["creator"]
+    title = item_data["title"]
+    price = item_data["price"]
+    
+    # 初期値の設定
+    favorite = 0
+    purchase_count = 0
+    review = 0
+    recent_review_display = "0件"
+    first_review_date = "データなし"
+    purchase_date = "データなし"
+    description_text = "取得失敗"
+    recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
+    base_rating_url = None
 
-            purchase_count = 0  
-            favorite = "-"
-            review = "-"
-            recent_review_display = "0件"  
-            first_review_date = "-" 
-            last_page_url = None
-            last_voices = []
-            recent_sales = ["-", "-", "-"]
-            description_text = "-" 
-            purchase_date = "-"  # 👈 【追加】購入日を格納する変数を初期化
+    try:
+        # --- [詳細ページの解析] ---
+        res = requests.get(link, headers=headers, timeout=10)
+        if res.status_code != 200:
+            return None
             
+        soup = BeautifulSoup(res.content, "html.parser")
+        
+        # 1. 作品紹介文
+        desc_tag = soup.select_one(".p-item-detail-body__description")
+        if desc_tag:
+            description_text = desc_tag.text.strip()
+            
+        # 2. お気に入り数
+        fav_tag = soup.select_one(".c-favorite-btn__count, .p-item-detail-body__action-favorite-count")
+        if fav_tag:
+            favorite = int(re.sub(r"\D", "", fav_tag.text)) if re.sub(r"\D", "", fav_tag.text) else 0
+            
+        # 3. 購入者数・総評価数・評価リンクの回収
+        rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
+        if rating_link_tag:
+            review_text = rating_link_tag.text.strip()
+            review = int(re.sub(r"\D", "", review_text)) if re.sub(r"\D", "", review_text) else 0
+            
+            # --- [5. 評価ページの解析 (検証コード移植版)] ---
             try:
-                detail_res = requests.get(link, headers=headers, timeout=10)
-                if detail_res.status_code == 200:
-                    detail_soup = BeautifulSoup(detail_res.content, "html.parser")
-                    
-                    # 1. 作品紹介文
+                base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
+                if "?" in base_rating_url:
+                    base_rating_url = base_rating_url.split("?")[0]
+                
+                all_found_dates = []
+                current_page = 1
+                current_url = base_rating_url
+                
+                # 検証コードと同じ文字列処理
+                clean_target = " ".join(title.strip().split())
+                
+                while current_url and current_page <= 3:  
                     try:
-                        desc_element = detail_soup.select_one(".p-item-detail-description, .js-item-description, .p-item-detail__description")
-                        if desc_element: 
-                            description_text = desc_element.text.strip()
-                    except: pass
-
-                    # ----------------------------------------------------
-                    # 🎯 【追加】特定のタイトルの下から日付を抽出する処理
-                    # ----------------------------------------------------
-                    try:
-                        target_title = "ここに探したいタイトルの文字列"  # 👈 実際に探したい文字列（例: "購入日時" など）に書き換えてください
-                        
-                        if target_title in description_text:
-                            # タイトル以降の文字列を切り取る
-                            after_title_text = description_text.split(target_title, 1)[1]
+                        r_res = requests.get(current_url, headers=headers, timeout=10)
+                        if r_res.status_code != 200: 
+                            break
                             
-                            # 最初に出てくる日付（例: 2026.06.25 や 2026/06/25 など）を正規表現で探す
-                            date_match = re.search(r"(\d{4}[./-]\d{2}[./-]\d{2})", after_title_text)
-                            if date_match:
-                                purchase_date = date_match.group(1)  # 見つかった日付をセット
-                    except:
-                        purchase_date = "解析失敗"
-                    # ----------------------------------------------------
-
-                    # 2. お気に入り数
-                    try:
-                        fav_element = detail_soup.find(class_=re.compile(r"js-like-item-number"))
-                        if fav_element: favorite = fav_element.text.strip()
-                    except: pass
-                    
-                    # 3. 購入者数
-                    try:
-                        purchase_element = detail_soup.find(string=re.compile(r"(\d+人購入|\d+人以上購入)"))
-                        if purchase_element: purchase_count = purchase_element.strip()
-                    except: pass
-                    
-                    # 4. 総評価数
-                    rating_link_tag = detail_soup.find("a", href=re.compile(r"rating/sale"))
-                    base_rating_url = None  # 6番で使うURLをあらかじめ初期化
-                    if rating_link_tag and rating_link_tag.text:
-                        try:
-                            matches = re.search(r"（(\d+)件）", rating_link_tag.text)
-                            if matches: review = matches.group(1)
-                        except: pass
-
-                        # ====================================================
-                        # 🏁【完全一本化・構文エラー修正版】5. 評価ページの解析
-                        # ====================================================
-                        try:
-                            base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
-                            if "?" in base_rating_url:
-                                base_rating_url = base_rating_url.split("?")[0]
+                        r_soup = BeautifulSoup(r_res.content, "html.parser")
+                        blocks = r_soup.select(".p-creator-rating-rating__content")
+                        if not blocks: 
+                            break
                             
-                            all_found_dates = []
-                            current_page = 1
-                            current_url = base_rating_url
-                            
-                            # 検証コードと同じ文字列処理
-                            clean_target = " ".join(title.strip().split())
-                            
-                            # 3ページ目まで確実にスキャン
-                            while current_url and current_page <= 3:  
-                                try:
-                                    res = requests.get(current_url, headers=headers, timeout=10)
-                                    if res.status_code != 200: break
-                                    
-                                    soup = BeautifulSoup(res.content, "html.parser")
-                                    blocks = soup.select(".p-creator-rating-rating__content")
-                                    if not blocks: break
-                                    
-                                    for block in blocks:
-                                        title_tags = block.select(".p-creator-rating-rating__title a")
-                                        is_target = False
-                                        for t in title_tags:
-                                            if " ".join(t.text.strip().split()) == clean_target:
-                                                is_target = True
-                                                break
-                                        
-                                        if is_target:
-                                            voice_tag = block.select_one(".p-creator-rating-rating__voice")
-                                            if voice_tag:
-                                                date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
-                                                if date_tag:
-                                                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-                                                    if date_match:
-                                                        date_obj = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                        all_found_dates.append(date_obj)
-                                                            
-                                    current_page += 1
-                                    current_url = f"{base_rating_url}?page={current_page}"
-                                    time.sleep(0.1)
-                                except:
+                        for block in blocks:
+                            title_tags = block.select(".p-creator-rating-rating__title a")
+                            is_target = False
+                            for t in title_tags:
+                                if " ".join(t.text.strip().split()) == clean_target:
+                                    is_target = True
                                     break
                             
-                            # 新しい順にソートして上位3つを抽出
-                            all_found_dates.sort(reverse=True)
-                            final_3_dates = [d.strftime("%Y.%m.%d") for d in all_found_dates[:3]]
-                            
-                            # 検証コードの結果をそのままマッピング（ダブり防止）
-                            recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
-                            if len(final_3_dates) >= 1: recent_sales[0] = final_3_dates[0]
-                            if len(final_3_dates) >= 2: recent_sales[1] = final_3_dates[1]
-                            if len(final_3_dates) >= 3: recent_sales[2] = final_3_dates[2]
-                                        
-                        except:
-                            recent_sales = ["解析失敗", "解析失敗", "解析失敗"]
-
-                    # 6. 直近1ヶ月の評価数
-                    recent_review_display = "0件"
-                    first_review_date = "データなし"
-                    last_page_url = None
-                    last_voices = None
-
-                    if base_rating_url:
-                        try:
-                            rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
-                            if rating_res.status_code == 200:
-                                rating_soup = BeautifulSoup(rating_res.content, "html.parser")
-                                voices = rating_soup.select(".p-creator-rating-rating__voice")
-                                last_voices = voices 
-                                
-                                recent_count = 0
-                                for voice in voices:
-                                    try:
-                                        date_tag = voice.select_one(".p-creator-rating-rating__date")
-                                        if date_tag:
-                                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text.strip())
-                                            if date_match and datetime.strptime(date_match.group(1), "%Y.%m.%d") >= one_month_ago:
-                                                recent_count += 1
-                                    except: pass
-                                
-                                recent_review_display = "20件以上" if (recent_count >= 20 and len(voices) >= 20) else f"{recent_count}件"
-
-                                try:
-                                    all_links = rating_soup.find_all("a", href=True)
-                                    page_data = []
-                                    for a_tag in all_links:
-                                        href = a_tag["href"]
-                                        p_match = re.search(r"page=(\d+)", href) or re.search(r"/rating/sale/(\d+)", href)
-                                        if p_match: page_data.append((int(p_match.group(1)), href if href.startswith("http") else "https://www.creema.jp" + href))
-                                    if page_data: _, last_page_url = max(page_data, key=lambda x: x[0])
-                                except: pass
-                        except: pass
-
-                        if last_page_url:
-                            try:
-                                last_page_res = requests.get(last_page_url, headers=headers, timeout=10)
-                                if last_page_res.status_code == 200:
-                                    last_voices = BeautifulSoup(last_page_res.content, "html.parser").select(".p-creator-rating-rating__voice")
-                            except: pass
-                        
-                        if last_voices:
-                            try:
-                                oldest_date = None
-                                for voice in last_voices:
-                                    date_tag = voice.select_one(".p-creator-rating-rating__date")
+                            if is_target:
+                                voice_tag = block.select_one(".p-creator-rating-rating__voice")
+                                if voice_tag:
+                                    date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
                                     if date_tag:
                                         date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
                                         if date_match:
-                                            current_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                            if oldest_date is None or current_date < oldest_date: oldest_date = current_date
-                                if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
-                            except: first_review_date = "解析失敗"
+                                            date_obj = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                            all_found_dates.append(date_obj)
+                                                
+                        current_page += 1
+                        current_url = f"{base_rating_url}?page={current_page}"
+                        time.sleep(0.1)
+                    except:
+                        break
+                
+                # 新しい順にソートして上位3つを抽出
+                all_found_dates.sort(reverse=True)
+                final_3_dates = [d.strftime("%Y.%m.%d") for d in all_found_dates[:3]]
+                
+                # 1件なら1件だけマッピングして残りは「3ヶ月以上前」をキープ
+                if len(final_3_dates) >= 1: recent_sales[0] = final_3_dates[0]
+                if len(final_3_dates) >= 2: recent_sales[1] = final_3_dates[1]
+                if len(final_3_dates) >= 3: recent_sales[2] = final_3_dates[2]
+                            
+            except:
+                recent_sales = ["解析失敗", "解析失敗", "解析失敗"]
 
-            # 🚪 関数の出口（確定した結果をそのまま辞書に詰めて送出）
-            return {
-                "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
-                "お気に入り数": favorite, "購入者数": purchase_count,  
-                "直近販売日1": recent_sales[0],
-                "直近販売日2": recent_sales[1],
-                "直近販売日3": recent_sales[2],
-                "総評価数": review, "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
-                "購入日": purchase_date,  
-                "作品紹介文": description_text 
-            }
+        # --- [6. 直近1ヶ月の評価数 ＆ 一番初めの評価日] ---
+        if base_rating_url:
+            try:
+                rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
+                if rating_res.status_code == 200:
+                    rating_soup = BeautifulSoup(rating_res.content, "html.parser")
+                    voices = rating_soup.select(".p-creator-rating-rating__voice")
+                    last_voices = voices 
+                    
+                    recent_count = 0
+                    for voice in voices:
+                        try:
+                            date_tag = voice.select_one(".p-creator-rating-rating__date")
+                            if date_tag:
+                                date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text.strip())
+                                if date_match and datetime.strptime(date_match.group(1), "%Y.%m.%d") >= one_month_ago:
+                                    recent_count += 1
+                        except: 
+                            pass
+                    
+                    recent_review_display = "20件以上" if (recent_count >= 20 and len(voices) >= 20) else f"{recent_count}件"
 
-        except Exception as e:
-            return None
+                    # 最後のページ（一番古い評価）のURLを探す
+                    try:
+                        all_links = rating_soup.find_all("a", href=True)
+                        page_data = []
+                        for a_tag in all_links:
+                            href = a_tag["href"]
+                            p_match = re.search(r"page=(\d+)", href) or re.search(r"/rating/sale/(\d+)", href)
+                            if p_match: 
+                                page_data.append((int(p_match.group(1)), href if href.startswith("http") else "https://www.creema.jp" + href))
+                        if page_data: 
+                            _, last_page_url = max(page_data, key=lambda x: x[0])
+                            
+                            # 最終ページの評価を取得
+                            last_page_res = requests.get(last_page_url, headers=headers, timeout=10)
+                            if last_page_res.status_code == 200:
+                                last_voices = BeautifulSoup(last_page_res.content, "html.parser").select(".p-creator-rating-rating__voice")
+                    except: 
+                        pass
+                    
+                    # 一番古い日付を解析
+                    if last_voices:
+                        try:
+                            oldest_date = None
+                            for voice in last_voices:
+                                date_tag = voice.select_one(".p-creator-rating-rating__date")
+                                if date_tag:
+                                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                                    if date_match:
+                                        current_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                        if oldest_date is None or current_date < oldest_date: 
+                                            oldest_date = current_date
+                            if oldest_date: 
+                                first_review_date = oldest_date.strftime("%Y.%m.%d")
+                        except: 
+                            first_review_date = "解析失敗"
+            except:
+                pass
+
+        # 🚪 データの返却（完璧にインデントを揃えた正常な位置）
+        return {
+            "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
+            "お気に入り数": favorite, "購入者数": purchase_count,  
+            "直近販売日1": recent_sales[0],
+            "直get販売日2": recent_sales[1],  # ※キー名は元の設定に合わせて調整してください
+            "直近販売日2": recent_sales[1],
+            "直近販売日3": recent_sales[2],
+            "総評価数": review, "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
+            "購入日": purchase_date,  
+            "作品紹介文": description_text 
+        }
+
+    except Exception as e:
+        return None
 
     # ----------------------------------------------------
     #  メインロジックの開始（関数内部）
