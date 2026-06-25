@@ -181,7 +181,7 @@ def scrape_creema_fast(start_url, max_num):
                             if matches: review = matches.group(1)
                         except: pass
 
-# 5. 評価ページの解析（関数内で日付を自給自足する完全版）
+# 5. 評価ページの解析（強制リセット＆完全防衛版）
                     if rating_link_tag:
                         try:
                             # 1. ベースとなるURLの整形
@@ -189,8 +189,7 @@ def scrape_creema_fast(start_url, max_num):
                             if "?" in base_rating_url:
                                 base_rating_url = base_rating_url.split("?")[0]
                             
-                            # ✨【超重要】外部の変数に頼らず、関数の中で3ヶ月前と1ヶ月前の基準日を自分で作る
-                            local_one_month_ago = datetime.now() - timedelta(days=30)
+                            # 関数内で日付を自給自足
                             local_three_months_ago = datetime.now() - timedelta(days=90)
                             
                             all_matched_dates = []
@@ -208,7 +207,6 @@ def scrape_creema_fast(start_url, max_num):
                                     blocks = soup.select(".p-creator-rating-rating__content")
                                     if not blocks: break
                                     
-                                    # 現在のページにあるレビューをすべて最後までスキャン
                                     for block in blocks:
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         is_target = False
@@ -225,47 +223,44 @@ def scrape_creema_fast(start_url, max_num):
                                                     date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
                                                     if date_match:
                                                         review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                        # ✨ 自分で作った 3ヶ月前の基準日と比較
                                                         if review_date >= local_three_months_ago:
                                                             all_matched_dates.append(review_date)
                                                             
-                                    # ページを最後まで全回収した時点で3つ以上あれば、次のページにはいかない
                                     if len(all_matched_dates) >= 3:
                                         break
                                     
-                                    # ブレーキ機能：ページ全体の最新レビュー日が3ヶ月以上前なら、以降のページ移動を打ち切り
+                                    # ブレーキ機能
                                     all_page_dates = []
                                     for v_tag in soup.select(".p-creator-rating-rating__voice"):
                                         d_tag = v_tag.select_one(".p-creator-rating-rating__date")
                                         if d_tag:
                                             d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", d_tag.text)
                                             if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
-                                    # ✨ 自分で作った 3ヶ月前の基準日と比較
                                     if all_page_dates and max(all_page_dates) < local_three_months_ago: break
                                     
-                                    # 次のページURLを作成
                                     current_page += 1
                                     current_url = f"{base_rating_url}?page={current_page}"
                                     time.sleep(0.1)
                                 except:
                                     break
                             
-                            # 3. 回収した日付を「新しい順」に並び替えてトップ3を抽出
+                            # 3. 回収した日付を新しい順にソートして抽出
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
-                            # 4. 出力文字の判定
-                            recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
+                            # 4. 🔥【絶対防衛】他の処理で上書きされないよう、ここで厳密に決定する
+                            final_sales_list = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
                             total_found = len(sorted_dates)
                             
                             if total_found == 0 and current_page > 10:
-                                # 10ページ目までブレーキもかからず探しきって、本当に何もなかった場合のみ「取得失敗」
-                                recent_sales = ["取得失敗", "取得失敗", "取得失敗"]
+                                final_sales_list = ["取得失敗", "取得失敗", "取得失敗"]
                             else:
-                                # 見つかった数に応じて、安全に1つずつ別々の枠へ代入
-                                if total_found >= 1: recent_sales[0] = sorted_dates[0]
-                                if total_found >= 2: recent_sales[1] = sorted_dates[1]
-                                if total_found >= 3: recent_sales[2] = sorted_dates[2]
+                                if total_found >= 1: final_sales_list[0] = sorted_dates[0]
+                                if total_found >= 2: final_sales_list[1] = sorted_dates[1]
+                                if total_found >= 3: final_sales_list[2] = sorted_dates[2]
+                            
+                            # ⚠️ 外部で使い回されている可能性のある変数を、ここで完全に上書きリセットする
+                            recent_sales = final_sales_list
                                         
                         except: pass
 
