@@ -202,60 +202,95 @@ def convert_df_to_excel(df):
 # =============================================
 def _internal_fetch_item(item_data, headers, one_month_ago):
     link = item_data["link"]
+    creator = item_data["creator"]
     title = item_data["title"]
-    # (省略: creator, price等は既存のものを使用)
+    price = item_data["price"]
     
+    favorite = 0
+    purchase_display = "0人"
+    review = 0
+    recent_review_display = "0件"
+    first_review_date = "データなし"
+    description_text = "取得失敗"
     recent_sales = ["ー", "ー", "ー"]
-    all_found_dates = []
 
     try:
         res = requests.get(link, headers=headers, timeout=10)
+        if res.status_code != 200: return None
         soup = BeautifulSoup(res.content, "html.parser")
-        rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
         
+        # 作品説明取得
+        desc_tag = soup.select_one(".p-item-detail__description, .p-item-detail-body__description")
+        if desc_tag: description_text = desc_tag.text.strip()
+            
+        # お気に入り数取得
+        fav_btn = soup.find(lambda tag: tag.name in ["button", "a"] and "お気に入りに追加" in tag.text)
+        if fav_btn:
+            num_part = fav_btn.select_one(".js-like-item-number, b, span")
+            fav_text = re.sub(r"\D", "", num_part.text if num_part else fav_btn.text)
+            favorite = int(fav_text) if fav_text else 0
+            
+        # 購入者数取得
+        buy_container = soup.select_one(".p-item-detail-info__item--left")
+        if buy_container:
+            text = buy_container.get_text(strip=True)
+            if "10人以上購入" in text: purchase_display = "10人以上"
+            else:
+                match = re.search(r"(\d+)人購入", text)
+                if match: purchase_display = f"{match.group(1)}人"
+        
+        # レビューページ解析
+        rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
         if rating_link_tag:
-            base_rating_url = "https://www.creema.jp" + rating_link_tag["href"].split("?")[0]
+            href_attr = rating_link_tag["href"]
+            base_rating_url = href_attr if href_attr.startswith("http") else "https://www.creema.jp" + href_attr
+            if "?" in base_rating_url: base_rating_url = base_rating_url.split("?")[0]
+            
+            all_found_dates = []
             target_name = "".join(title.split())
             
-            # 最大5ページまで探索（必要に応じて増減可能）
-            for page in range(1, 6):
-                page_url = f"{base_rating_url}?page={page}"
-                r_res = requests.get(page_url, headers=headers, timeout=10)
+            # --- 探索ログ追加 ---
+            print(f"[{title[:15]}...] レビュー探索開始")
+            
+            for current_page in range(1, 6): # 5ページまで探索
+                r_res = requests.get(f"{base_rating_url}?page={current_page}", headers=headers, timeout=10)
                 if r_res.status_code != 200: break
                 
                 r_soup = BeautifulSoup(r_res.content, "html.parser")
                 blocks = r_soup.select(".p-creator-rating-list__item, .p-creator-rating-rating__content")
+                if not blocks: break
                 
-                count_in_page = 0
+                found_in_page = 0
                 for block in blocks:
                     item_name_tag = block.select_one(".p-creator-rating-rating__title a, .p-creator-rating-list__item-title a")
-                    if item_name_tag and target_name in "".join(item_name_tag.text.split()):
-                        date_tag = block.select_one(".p-creator-rating-rating__date, .p-creator-rating-list__item-date")
-                        if date_tag:
-                            d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_tag.text)
-                            if d_match:
-                                all_found_dates.append(datetime(int(d_match.group(1)), int(d_match.group(2)), int(d_match.group(3))))
-                                count_in_page += 1
+                    if item_name_tag:
+                        review_item_name = "".join(item_name_tag.text.split())
+                        if target_name in review_item_name or review_item_name in target_name:
+                            date_tag = block.select_one(".p-creator-rating-rating__date, .p-creator-rating-list__item-date")
+                            if date_tag:
+                                d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_tag.text)
+                                if d_match:
+                                    all_found_dates.append(datetime(int(d_match.group(1)), int(d_match.group(2)), int(d_match.group(3))))
+                                    found_in_page += 1
                 
-                # 探索状況をコンソール/ログに表示
-                print(f"[探索中] {title[:10]}... | {page}ページ目 | {count_in_page}個の該当商品名を発見")
-                
-                # そのページにレビューが一件もなければ終了
-                if not blocks: break
-                time.sleep(0.3)
+                print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
+                time.sleep(0.2)
             
             all_found_dates.sort(reverse=True)
             for i in range(min(3, len(all_found_dates))):
                 recent_sales[i] = all_found_dates[i].strftime("%Y.%m.%d")
-        
-        # ... 以降、結果を辞書で返す部分は同じ ...
+            
+            review = len(all_found_dates)
+            recent_month_count = sum(1 for d in all_found_dates if d >= one_month_ago)
+            recent_review_display = f"{recent_month_count}件"
+            if all_found_dates: first_review_date = min(all_found_dates).strftime("%Y.%m.%d")
+
         return {
-            "No.": 0, "作家名": item_data["creator"], "商品名": title, "価格(円)": item_data["price"], "商品URL": link,
-            "お気に入り数": 0, "購入者数": "0人", # 必要に応じて変数連携
+            "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
+            "お気に入り数": favorite, "購入者数": purchase_display,  
             "直近販売日1": recent_sales[0], "直近販売日2": recent_sales[1], "直近販売日3": recent_sales[2],
-            "総評価数": len(all_found_dates), "直近1ヶ月の評価数": f"{sum(1 for d in all_found_dates if d >= one_month_ago)}件",
-            "一番初めの評価日": min(all_found_dates).strftime("%Y.%m.%d") if all_found_dates else "データなし",
-            "作品紹介文": "..."
+            "総評価数": review, "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
+            "作品紹介文": description_text 
         }
     except:
         return None
