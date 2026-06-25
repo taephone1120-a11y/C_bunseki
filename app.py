@@ -181,13 +181,17 @@ def scrape_creema_fast(start_url, max_num):
                             if matches: review = matches.group(1)
                         except: pass
 
-# 5. # 5. 評価ページの解析（各ページ全回収・最大10ページ版）
+# 5. 評価ページの解析（関数内で日付を自給自足する完全版）
                     if rating_link_tag:
                         try:
                             # 1. ベースとなるURLの整形
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             if "?" in base_rating_url:
                                 base_rating_url = base_rating_url.split("?")[0]
+                            
+                            # ✨【超重要】外部の変数に頼らず、関数の中で3ヶ月前と1ヶ月前の基準日を自分で作る
+                            local_one_month_ago = datetime.now() - timedelta(days=30)
+                            local_three_months_ago = datetime.now() - timedelta(days=90)
                             
                             all_matched_dates = []
                             current_page = 1
@@ -204,7 +208,7 @@ def scrape_creema_fast(start_url, max_num):
                                     blocks = soup.select(".p-creator-rating-rating__content")
                                     if not blocks: break
                                     
-                                    # 現在のページにあるレビューを【すべて最後まで】スキャンして回収
+                                    # 現在のページにあるレビューをすべて最後までスキャン
                                     for block in blocks:
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         is_target = False
@@ -221,23 +225,25 @@ def scrape_creema_fast(start_url, max_num):
                                                     date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
                                                     if date_match:
                                                         review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                        if review_date >= three_months_ago:
+                                                        # ✨ 自分で作った 3ヶ月前の基準日と比較
+                                                        if review_date >= local_three_months_ago:
                                                             all_matched_dates.append(review_date)
                                                             
-                                    # ✨【判定のタイミング】ページを「最後まで全回収した時点」で3つ以上あれば、次のページにはいかない
+                                    # ページを最後まで全回収した時点で3つ以上あれば、次のページにはいかない
                                     if len(all_matched_dates) >= 3:
                                         break
                                     
-                                    # 【ブレーキ】ページ全体の最新レビュー日が3ヶ月以上前なら、以降のページ移動を打ち切り
+                                    # ブレーキ機能：ページ全体の最新レビュー日が3ヶ月以上前なら、以降のページ移動を打ち切り
                                     all_page_dates = []
                                     for v_tag in soup.select(".p-creator-rating-rating__voice"):
                                         d_tag = v_tag.select_one(".p-creator-rating-rating__date")
                                         if d_tag:
                                             d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", d_tag.text)
                                             if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
-                                    if all_page_dates and max(all_page_dates) < three_months_ago: break
+                                    # ✨ 自分で作った 3ヶ月前の基準日と比較
+                                    if all_page_dates and max(all_page_dates) < local_three_months_ago: break
                                     
-                                    # 次のページURLを作成（例: .../sale?page=2）
+                                    # 次のページURLを作成
                                     current_page += 1
                                     current_url = f"{base_rating_url}?page={current_page}"
                                     time.sleep(0.1)
