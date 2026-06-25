@@ -391,17 +391,17 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                     if not is_same_item:
                         if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
-                        debug_logs.append(
-                            "対象外判定: "
-                            f"page={current_page} / "
-                            f"対象ID={target_item_id} / "
-                            f"レビューID={review_item_id} / "
-                            f"ID一致={is_same_by_id} / "
-                            f"名前一致={is_same_by_name} / "
-                            f"語句一致={is_same_by_words} / "
-                            f"対象名={title[:80]} / "
-                            f"レビュー名={review_item_name[:80]}"
-                        )
+                            debug_logs.append(
+                                "対象外判定: "
+                                f"page={current_page} / "
+                                f"対象ID={target_item_id} / "
+                                f"レビューID={review_item_id} / "
+                                f"ID一致={is_same_by_id} / "
+                                f"名前一致={is_same_by_name} / "
+                                f"語句一致={is_same_by_words} / "
+                                f"対象名={title[:80]} / "
+                                f"レビュー名={review_item_name[:80]}"
+                            )
                         continue
 
                     print("【一致】対象商品として処理")
