@@ -323,7 +323,21 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         is_same_item = target_name in review_item_name or review_item_name in target_name
 
                     if not is_same_item:
+                        print("【スキップ】対象商品ではないと判断")
+                        print("対象ID:", target_item_id)
+                        print("レビューID:", review_item_id)
+                        print("対象商品名:", target_name[:80])
+                        print("レビュー商品名:", review_item_name[:80])
+                        print("-" * 50)
                         continue
+
+                    print("【一致】対象商品として処理")
+                    print("対象ID:", target_item_id)
+                    print("レビューID:", review_item_id)
+                    print("対象商品名:", target_name[:80])
+                    print("レビュー商品名:", review_item_name[:80])
+                    print("-" * 50)
+                                   
 
                     # 日付を取得
                     date_tag = block.select_one(
