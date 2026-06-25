@@ -262,7 +262,7 @@ def scrape_creema_fast(start_url, max_num):
                                         
                         except: pass
 
-                    # 6. 直近1ヶ月の評価数
+# 6. 直近1ヶ月の評価数
                     rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
                     if rating_res.status_code == 200:
                         rating_soup = BeautifulSoup(rating_res.content, "html.parser")
@@ -310,7 +310,6 @@ def scrape_creema_fast(start_url, max_num):
                                         if oldest_date is None or current_date < oldest_date: oldest_date = current_date
                             if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
                         except: first_review_date = "解析失敗"
-                        except: pass
             except:
                 description_text = "通信エラー"
 
