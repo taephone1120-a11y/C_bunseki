@@ -76,13 +76,17 @@ else:
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=10, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
-# 🌟 フィルターの中身（初期設定値）をもとに戻しました
+# 🌟 項目名と最小・最大の表示形式を元の形に戻しました
 st.sidebar.markdown('---')
 st.sidebar.header("📊 表示データの絞り込み")
-min_rev = st.sidebar.number_input("最小総評価数", min_value=0, value=0, step=10)
-max_rev = st.sidebar.number_input("最大総評価数", min_value=0, value=99999, step=50)
-min_fav = st.sidebar.number_input("最小お気に入り数", min_value=0, value=0, step=10)
-max_fav = st.sidebar.number_input("最大お気に入り数", min_value=0, value=99999, step=50)
+
+st.sidebar.markdown("**レビュー数**")
+min_rev = st.sidebar.number_input("レビュー数（最小）", min_value=0, value=0, step=10)
+max_rev = st.sidebar.number_input("レビュー数（最大）", min_value=0, value=99999, step=50)
+
+st.sidebar.markdown("**お気に入り数**")
+min_fav = st.sidebar.number_input("お気に入り数（最小）", min_value=0, value=0, step=10)
+max_fav = st.sidebar.number_input("お気に入り数（最大）", min_value=0, value=99999, step=50)
 
 # =============================================
 #   📲 LINE通知関数
