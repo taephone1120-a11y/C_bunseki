@@ -298,7 +298,23 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                 found_in_page = 0
 
                 for block in blocks:
-                                        # レビュー内の商品名リンクを優先して取得
+                    if "pomepome" in creator:
+                        debug_logs.append(
+                            f"BLOCK本文: page={current_page} / {block.get_text(' ', strip=True)[:300]}"
+                        )
+
+                        item_links_debug = []
+                        for a in block.select('a[href*="/item/"]'):
+                            item_links_debug.append(
+                                f"{a.get('href', '')}｜{a.get_text(strip=True)[:50]}"
+                            )
+
+                        debug_logs.append(
+                            "ITEMリンク一覧: "
+                            + " || ".join(item_links_debug[:5])
+                        )
+
+                    # レビュー内の商品名リンクを優先して取得
                     item_name_tag = block.select_one(
                         '.p-creator-rating-rating__title a[href*="/item/"], '
                         '.p-creator-rating-list__item-title a[href*="/item/"]'
