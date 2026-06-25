@@ -277,7 +277,7 @@ def scrape_creema_fast(start_url, max_num):
             except:
                 pass
 
-        # 🚪 データの返却（完璧にインデントを揃えた正常な位置）
+        # 🚪 データの返却（タイポのない綺麗な状態）
         return {
             "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
             "お気に入り数": favorite, "購入者数": purchase_count,  
