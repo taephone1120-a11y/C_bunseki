@@ -1,119 +1,10 @@
-import io
-import re
 import time
-import random
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
-from urllib.parse import quote
-import numpy as np
-import pandas as pd
+import re
 import requests
-import streamlit as st
 from bs4 import BeautifulSoup
+from datetime import datetime
 
-# =============================================
-#   デザインとヘッダー設定
-# =============================================
-st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
-
-st.markdown("""
-    <style>
-    .block-container { padding-top: 2.5rem !important; padding-bottom: 2rem !important; }
-    html, body, [data-testid="stMarkdownContainer"] p, .stMarkdown p {
-        font-size: 14px !important;
-        font-family: "Meiryo", "Helvetica Neue", Arial, sans-serif;
-        line-height: 1.5 !important;
-    }
-    h1 { font-size: 28px !important; font-weight: 700 !important; color: #111111 !important; margin: 0 !important; }
-    div[data-testid="stSidebarUserContent"] { padding-top: 1rem !important; }
-    div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h5 { font-size: 13.5px !important; margin-top: 12px !important; margin-bottom: 5px !important; color: #111111 !important; font-weight: 600 !important; }
-    
-    /* 入力フォーム全体のコンパクト化設定 */
-    .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div { 
-        padding: 4px 8px !important; 
-        min-height: 32px !important; 
-        height: 32px !important; 
-        font-size: 13px !important; 
-    }
-    
-    /* フィルター枠内の「ー」「＋」ボタンを完全に非表示にするCSS */
-    div[data-testid="stNumberInput"] button {
-        display: none !important;
-    }
-    /* ボタンを消した後の右側余白を詰める調整 */
-    div[data-testid="stNumberInput"] div[data-baseline="true"] {
-        padding-right: 8px !important;
-    }
-    
-    /* 判定用スタイル */
-    .metric-card {
-        background-color: #f8f9fa;
-        border-left: 5px solid #1f497d;
-        padding: 15px;
-        border-radius: 4px;
-        margin-bottom: 15px;
-    }
-    .ai-box {
-        background-color: #f0f4f8;
-        border: 1px solid #d0e2ff;
-        padding: 20px;
-        border-radius: 6px;
-        margin-top: 20px;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("💎 Creema市場リサーチツール")
-st.markdown('<hr style="border: none; border-top: 1px solid #e6e6e6; margin-top: 15px; margin-bottom: 25px; padding: 0;">', unsafe_allow_html=True)
-
-# =============================================
-#   サイドバー：設定エリア
-# =============================================
-st.sidebar.header("⚙️ 取得条件設定")
-mode = st.sidebar.radio("収集モードを選択してください", ("キーワード検索", "一覧URL直貼り"))
-
-search_keyword = ""
-target_url = ""
-
-if mode == "キーワード検索":
-    search_keyword = st.sidebar.text_input("🔍 検索キーワードを入力", value="")
-    encoded_keyword = quote(search_keyword)
-    target_url = f"https://www.creema.jp/listing?q={encoded_keyword}&active=pc_listing-form"
-else:
-    target_url = st.sidebar.text_input("🔗 Creemaの一覧URLを入力", value="")
-
-max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=100, step=10)
-start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
-
-# =============================================
-#   📲 LINE通知関数
-# =============================================
-def send_line_notification(keyword_or_url, item_count):
-    LINE_ACCESS_TOKEN = "SsJj64qF912H/fusrwNgsiMS6bgJqv5C9i5Rx1HlHAmux8AmFlC7Q9Pnx5pbQD/4LXbi2ftiFf1zalCCDcGQAcXBxfakpnkBPLZkKzn5G2gbuQc2vkcn2GbCJ2Yf1HmfEWQoo8KbqqJn4/tsoPr4TwdB04t89/1O/w1cDnyilFU="
-    LINE_USER_ID = "Ub5228833332f8fd37bbd3d9072853f2c"
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = { "Content-Type": "application/json", "Authorization": f"Bearer {LINE_ACCESS_TOKEN}" }
-    message_text = f"💎 【Creemaツール】利用通知\n\nリサーチ開始！\n内容:\n{keyword_or_url}\n上限: {item_count} 件"
-    try: requests.post(url, headers=headers, json={"to": LINE_USER_ID, "messages": [{"type": "text", "text": message_text}]}, timeout=5)
-    except: pass
-
-# =============================================
-#   メインのスクレイピング制御（自己完結版）
-# =============================================
-def scrape_creema_fast(start_url, max_num):
-    import time
-    import random
-    import re
-    import requests
-    from bs4 import BeautifulSoup
-    from datetime import datetime, timedelta
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    import streamlit as st
-
-    # ----------------------------------------------------
-    # 💡 【完全内蔵】1件詳細解析用パーツ
-    # ----------------------------------------------------
-    def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
+def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
     """
     1件の商品URLに対して詳細情報を解析する関数
     """
@@ -277,7 +168,7 @@ def scrape_creema_fast(start_url, max_num):
             except:
                 pass
 
-        # 🚪 データの返却（タイポのない綺麗な状態）
+        # 🚪 データの返却
         return {
             "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
             "お気に入り数": favorite, "購入者数": purchase_count,  
@@ -291,6 +182,8 @@ def scrape_creema_fast(start_url, max_num):
 
     except Exception as e:
         return None
+
+# ⚠️ ここから下に、元々あった scrape_creema_fast などの続きの関数が並ぶようにしてください。
 
     # ----------------------------------------------------
     #  メインロジックの開始（関数内部）
