@@ -245,21 +245,22 @@ def scrape_creema_fast(start_url, max_num):
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
-                            # 件数に応じて直接安全に代入する
-                            recent_sales = ["-", "-", "-"]
+                            # ✨【修正】条件の判定を正しいロジックに修正
+                            recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
                             total_found = len(sorted_dates)
                             
-                            if total_found == 0:
+                            # 5ページ目まで到達、かつブレーキにもかからず、3ヶ月以内データが「本当に0件」だった場合のみ取得失敗
+                            if total_found == 0 and current_page > 5:
                                 recent_sales = ["取得失敗", "取得失敗", "取得失敗"]
-                            elif total_found == 1:
-                                recent_sales[0] = sorted_dates[0]
-                            elif total_found == 2:
-                                recent_sales[0] = sorted_dates[0]
-                                recent_sales[1] = sorted_dates[1]
-                            elif total_found >= 3:
-                                recent_sales[0] = sorted_dates[0]
-                                recent_sales[1] = sorted_dates[1]
-                                recent_sales[2] = sorted_dates[2]
+                            else:
+                                # 1件でも見つかっている場合、または3ヶ月前ブレーキで終わった場合は、
+                                # 見つかった分だけ日付を入れ、残りの枠は初期値の「3ヶ月以上前」のままにする
+                                if total_found >= 1:
+                                    recent_sales[0] = sorted_dates[0]
+                                if total_found >= 2:
+                                    recent_sales[1] = sorted_dates[1]
+                                if total_found >= 3:
+                                    recent_sales[2] = sorted_dates[2]
                                         
                         except: pass
 
