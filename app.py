@@ -183,21 +183,10 @@ def scrape_creema_fast(start_url, max_num):
                             
 # 🛠️ いまある「if rating_link_tag:」の【すぐ上】にこれを追加
 st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {rating_link_tag}")
-# 5. 評価ページの解析（ルート確認・エラー解消版）
-                    # ✨【安全な位置】ここにルート確認の警告を配置
-                    st.warning(f"🔎【ルート判定】商品名: {title} / リンクの有無: {'あり' if rating_link_tag else 'なし (ここでスキップされてます)'}")
-
+# 5. 評価ページの解析（最新順ソート・増殖防止修正版）
                     if rating_link_tag:
                         try:
-                            if isinstance(rating_link_tag, str):
-                                href = rating_link_tag
-                            else:
-                                href = rating_link_tag.get("href", "")
-                                
-                            if not href:
-                                st.error("❌ 評価ページのリンク（href）が空っぽです。")
-                                
-                            base_rating_url = "https://www.creema.jp" + href if not href.startswith("http") else href
+                            base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             if "?" in base_rating_url:
                                 base_rating_url = base_rating_url.split("?")[0]
                             
@@ -206,7 +195,6 @@ st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {
                             current_page = 1
                             current_url = base_rating_url
                             clean_target = " ".join(title.strip().split())
-                            page_hit_counts = {}
                             
                             while current_url and current_page <= 10:  
                                 try:
@@ -217,27 +205,27 @@ st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {
                                     blocks = soup.select(".p-creator-rating-rating__content")
                                     if not blocks: break
                                     
-                                    page_hit_counts[f"{current_page}ページ目"] = 0
-                                    
                                     for block in blocks:
-                                        found_in_this_block = False
+                                        # ✨ このレビューブロックで、すでに日付を回収したかを記録するフラグ
+                                        has_saved_date = False
+                                        
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         for t in title_tags:
                                             if " ".join(t.text.strip().split()) == clean_target:
-                                                found_in_this_block = True
+                                                # まだこのブロックから日付を取っていなければ回収する
+                                                if not has_saved_date:
+                                                    voice_tag = block.select_one(".p-creator-rating-rating__voice")
+                                                    if voice_tag:
+                                                        date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
+                                                        if date_tag:
+                                                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                                                            if date_match:
+                                                                review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                                                if review_date >= local_three_months_ago:
+                                                                    all_matched_dates.append(review_date)
+                                                                    # 回収したのでフラグをTrueにして、同じブロック内では2度と追加させない
+                                                                    has_saved_date = True
                                                 break
-                                        
-                                        if found_in_this_block:
-                                            page_hit_counts[f"{current_page}ページ目"] += 1
-                                            voice_tag = block.select_one(".p-creator-rating-rating__voice")
-                                            if voice_tag:
-                                                date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
-                                                if date_tag:
-                                                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-                                                    if date_match:
-                                                        review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                        if review_date >= local_three_months_ago:
-                                                            all_matched_dates.append(review_date)
                                                             
                                     if len(all_matched_dates) >= 3:
                                         break
@@ -253,11 +241,8 @@ st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {
                                     current_page += 1
                                     current_url = f"{base_rating_url}?page={current_page}"
                                     time.sleep(0.1)
-                                except Exception as e:
-                                    st.error(f"❌ ループ内エラー: {e}")
+                                except:
                                     break
-                            
-                            st.info(f"📊【名前ヒット数チェック】\n作品名: {title}\n結果: {page_hit_counts}")
                             
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
@@ -272,8 +257,7 @@ st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {
                                 if total_found >= 2: recent_sales[1] = sorted_dates[1]
                                 if total_found >= 3: recent_sales[2] = sorted_dates[2]
                                         
-                        except Exception as main_error: 
-                            st.error(f"🚨【解析大元のエラー】エラー内容: {main_error}")
+                        except: pass
 # 6. 直近1ヶ月の評価数
                     rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
                     if rating_res.status_code == 200:
