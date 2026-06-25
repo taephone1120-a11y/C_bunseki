@@ -464,6 +464,9 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         continue
 
                     seen_review_keys.add(review_key)
+                    all_found_dates.append(found_date)
+                    found_in_page += 1
+
                     if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
                         debug_logs.append(
                             f"取得成功: page={current_page} / {found_date.strftime('%Y.%m.%d')} / {review_item_name[:80]}"
