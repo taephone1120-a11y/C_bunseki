@@ -420,7 +420,7 @@ def scrape_creema_fast(start_url, max_num):
     return None
 
 # =============================================
-#    🎬 アプリ実行処理エリア（セッション制御）
+#    ⚙️ アプリ実行処理エリア（セッション制御）
 # =============================================
 if "raw_data" not in st.session_state: st.session_state.raw_data = None
 if "market_total" not in st.session_state: st.session_state.market_total = 170000
@@ -450,6 +450,10 @@ if start_button:
 # --- 画面表示処理 ---
 if st.session_state.raw_data is not None:
     df = pd.DataFrame(st.session_state.raw_data)
+    
+    # 🌟 エラー対策：データ型を明示的に数値に変換
+    df["総評価数"] = pd.to_numeric(df["総評価数"], errors='coerce').fillna(0).astype(int)
+    df["お気に入り数"] = pd.to_numeric(df["お気に入り数"], errors='coerce').fillna(0).astype(int)
     
     # 1. フィルター機能
     st.markdown('<h4 style="font-size:16px; font-weight:600; margin-top:10px; margin-bottom:10px;">📊 データを絞り込む</h4>', unsafe_allow_html=True)
@@ -568,7 +572,6 @@ if st.session_state.raw_data is not None:
     # =================================================================
     # 🤖 作品タイトル・紹介文のプロンプト作成エリア
     # =================================================================
-    # 本来のデータテーブル (filtered_df) をプロンプト生成のソースとして利用します
     if not filtered_df.empty:
         candidate_items = filtered_df.head(10) # 検索上位10選を対象に設定
 
@@ -616,7 +619,7 @@ if st.session_state.raw_data is not None:
 例）名入れやラッピング対応ができるため、誕生日や記念日のプレゼントにもおすすめです。
 
 価格に見合う理由：
-例）丈夫な素材を使っている、手作業に時間をかけている、長く使える、オーダー対応ができる、希少な素材充使っている など
+例）丈夫な素材を使っている、手作業に時間をかけている、長く使える、オーダー対応ができる、希少な素材を使っている など
 
 作品に込めた想い：
 例）毎日の暮らしの中で、使うたびに少し気分が上がるような作品を目指して作りました。
@@ -715,11 +718,6 @@ if st.session_state.raw_data is not None:
 
                     descriptions_summary += f"■人気商品{display_no}: {item_name}\n【紹介文】:\n{cleaned_desc}\n\n"
 
-                final_desc_prompt = textwrap.dedent(f"""
-                ...（中略。文字数制限のため内部で完全版を統合済み）...
-                """).strip()
-
-                # 元のコードで意図されていた完全なプロンプトを作成
                 final_desc_prompt = f"あなたは、Creema・minneなどのハンドメイドマーケットで売れる商品ページを分析し、\n検索上位に表示されやすく、かつ購入につながる作品紹介文を作る専門家です。\n\n以下の【分析対象：人気商品の紹介文一覧】と【出品する作品の情報】をもとに、\nお気に入りだけで終わらず、購入につながりやすい作品紹介文を作成してください。\n\n---\n【分析対象：人気商品の紹介文一覧】\n{descriptions_summary}\n---\n\n【出品する作品の情報】\n■作品のタイトル: {my_product_title}\n■作品の説明・特徴・こだわり: {my_work_description}\n---\n\n# 出力内容\n1. 人気商品の紹介文分析\n2. 出品作品の魅力整理\n3. 作品紹介文の提案（3パターン）\n4. 検索対策キーワード一覧（20個以上）"
 
                 st.subheader("📋 【作品紹介文用】AI用コピーテキスト")
