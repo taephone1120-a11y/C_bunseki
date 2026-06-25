@@ -76,17 +76,53 @@ else:
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=10, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
-# 🌟 項目名と最小・最大の表示形式を元の形に戻しました
+# 🌟 指定された正しい項目とスライダー形式に完全修正
 st.sidebar.markdown('---')
 st.sidebar.header("📊 表示データの絞り込み")
 
-st.sidebar.markdown("**レビュー数**")
-min_rev = st.sidebar.number_input("レビュー数（最小）", min_value=0, value=0, step=10)
-max_rev = st.sidebar.number_input("レビュー数（最大）", min_value=0, value=99999, step=50)
+# 1. 購入者数スライダー
+buy_range = st.sidebar.slider(
+    "購入者数",
+    min_value=0,
+    max_value=1000,
+    value=(0, 1000),
+    step=10,
+    format="%d"
+)
+min_buy, max_buy = buy_range
 
-st.sidebar.markdown("**お気に入り数**")
-min_fav = st.sidebar.number_input("お気に入り数（最小）", min_value=0, value=0, step=10)
-max_fav = st.sidebar.number_input("お気に入り数（最大）", min_value=0, value=99999, step=50)
+# 2. 直近販売日1スライダー (過去180日前から今日まで)
+today = datetime.now().date()
+min_date_limit = today - timedelta(days=180)
+date1_range = st.sidebar.slider(
+    "直近販売日１",
+    min_value=min_date_limit,
+    max_value=today,
+    value=(min_date_limit, today),
+    format="MM/DD"
+)
+min_date1, max_date1 = date1_range
+
+# 3. 直近販売日3スライダー (過去180日前から今日まで)
+date3_range = st.sidebar.slider(
+    "直近販売日３",
+    min_value=min_date_limit,
+    max_value=today,
+    value=(min_date_limit, today),
+    format="MM/DD"
+)
+min_date3, max_date3 = date3_range
+
+# 4. 総評価数スライダー
+rev_range = st.sidebar.slider(
+    "総評価数",
+    min_value=0,
+    max_value=5000,
+    value=(50, 300),
+    step=10,
+    format="%d"
+)
+min_rev, max_rev = rev_range
 
 # =============================================
 #   📲 LINE通知関数
@@ -401,15 +437,47 @@ if start_button:
 if st.session_state.raw_data is not None:
     raw_df = pd.DataFrame(st.session_state.raw_data)
     
-    # 確実に数値変換をかけてから処理
+    # 数値変換の安全処理
+    raw_df["購入者数"] = pd.to_numeric(raw_df["購入者数"], errors='coerce').fillna(0).astype(int)
     raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').fillna(0).astype(int)
-    raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors='coerce').fillna(0).astype(int)
-    
-    # サイドバーのフィルターに基づいてデータを抽出
-    filtered_df = raw_df[
-        (raw_df["総評価数"] >= min_rev) & (raw_df["総評価数"] <= max_rev) &
-        (raw_df["お気に入り数"] >= min_fav) & (raw_df["お気に入り数"] <= max_fav)
-    ].copy()
+
+    # 日付フィルタ処理のための関数
+    def parse_to_date(val):
+        if not isinstance(val, str): return None
+        match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", val)
+        if match:
+            return datetime.strptime(match.group(0), "%Y.%m.%d").date()
+        return None
+
+    # 日付のフィルタリング条件を作成
+    # 3ヶ月以上前の表記など、日付に変換できないものはスライダーの「一番古い値」が選ばれているときのみ通過させる
+    is_min_date1_default = (min_date1 == min_date_limit)
+    is_min_date3_default = (min_date3 == min_date_limit)
+
+    def filter_row(row):
+        # 1. 購入者数と総評価数のチェック
+        if not (min_buy <= row["購入者数"] <= max_buy): return False
+        if not (min_rev <= row["総評価数"] <= max_rev): return False
+        
+        # 2. 直近販売日1のチェック
+        d1 = parse_to_date(row["直近販売日1"])
+        if d1:
+            if not (min_date1 <= d1 <= max_date1): return False
+        else:
+            if not is_min_date1_default: return False
+            
+        # 3. 直近販売日3のチェック
+        d3 = parse_to_date(row["直近販売日3"])
+        if d3:
+            if not (min_date3 <= d3 <= max_date3): return False
+        else:
+            if not is_min_date3_default: return False
+            
+        return True
+
+    # フィルタリングの適用
+    mask = raw_df.apply(filter_row, axis=1)
+    filtered_df = raw_df[mask].copy()
     
     if not filtered_df.empty:
         filtered_df["No."] = range(1, len(filtered_df) + 1)
