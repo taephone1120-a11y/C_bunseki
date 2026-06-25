@@ -175,13 +175,16 @@ def scrape_creema_fast(start_url, max_num):
                     
                     # 4. 総評価数
                     rating_link_tag = detail_soup.find("a", href=re.compile(r"rating/sale"))
+                    base_rating_url = None  # 6番で使うURLをあらかじめ初期化
                     if rating_link_tag and rating_link_tag.text:
                         try:
                             matches = re.search(r"（(\d+)件）", rating_link_tag.text)
                             if matches: review = matches.group(1)
                         except: pass
 
-                        # 5. 評価ページの解析（ここに正しく結合）
+                        # ====================================================
+                        # ✨【完全復活】 5. 評価ページの解析（重複増殖ブロック版）
+                        # ====================================================
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             if "?" in base_rating_url:
@@ -203,28 +206,29 @@ def scrape_creema_fast(start_url, max_num):
                                     if not blocks: break
                                     
                                     for block in blocks:
-                                        # 1つのレビューブロック内で処理を1回だけにするためのフラグ
-                                        has_saved_date = False
-                                        
+                                        found_in_this_block = False
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         for t in title_tags:
                                             if " ".join(t.text.strip().split()) == clean_target:
-                                                if not has_saved_date:
-                                                    voice_tag = block.select_one(".p-creator-rating-rating__voice")
-                                                    if voice_tag:
-                                                        date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
-                                                        if date_tag:
-                                                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-                                                            if date_match:
-                                                                review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                                if review_date >= local_three_months_ago:
-                                                                    all_matched_dates.append(review_date)
-                                                                    has_saved_date = True
+                                                found_in_this_block = True
                                                 break
+                                        
+                                        # 1つのレビューの塊（block）からは、絶対に1回しか日付を回収しない
+                                        if found_in_this_block:
+                                            voice_tag = block.select_one(".p-creator-rating-rating__voice")
+                                            if voice_tag:
+                                                date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
+                                                if date_tag:
+                                                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                                                    if date_match:
+                                                        review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                                        if review_date >= local_three_months_ago:
+                                                            all_matched_dates.append(review_date)
                                                             
                                     if len(all_matched_dates) >= 3:
                                         break
                                     
+                                    # 3ヶ月超えブレーキ
                                     all_page_dates = []
                                     for v_tag in soup.select(".p-creator-rating-rating__voice"):
                                         d_tag = v_tag.select_one(".p-creator-rating-rating__date")
@@ -242,18 +246,18 @@ def scrape_creema_fast(start_url, max_num):
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
+                            # ここで直近販売日を上書き（見つからない枠は「3ヶ月以上前」にする）
                             recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
                             total_found = len(sorted_dates)
                             
-                            if total_found == 0 and current_page > 10:
-                                recent_sales = ["取得失敗", "取得失敗", "取得失敗"]
-                            else:
-                                if total_found >= 1: recent_sales[0] = sorted_dates[0]
-                                if total_found >= 2: recent_sales[1] = sorted_dates[1]
-                                if total_found >= 3: recent_sales[2] = sorted_dates[2]
+                            if total_found >= 1: recent_sales[0] = sorted_dates[0]
+                            if total_found >= 2: recent_sales[1] = sorted_dates[1]
+                            if total_found >= 3: recent_sales[2] = sorted_dates[2]
                                         
                         except: pass
-# 6. 直近1ヶ月の評価数
+
+                    # # 6. 直近1ヶ月の評価数（※元々あった場所。ここから下は変更なし）
+                    if base_rating_url:
                     rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
                     if rating_res.status_code == 200:
                         rating_soup = BeautifulSoup(rating_res.content, "html.parser")
