@@ -197,7 +197,23 @@ def convert_df_to_excel(df):
             worksheet.column_dimensions[col[0].column_letter].width = min(max(max_len + 3, 10), 50)
             
     return output.getvalue()
+# =============================================
+#   商品名比較用の正規化関数
+# =============================================
+def normalize_item_name(name):
+    if not isinstance(name, str):
+        return ""
 
+    # 空白・改行・タブを削除
+    name = re.sub(r"\s+", "", name)
+
+    # 比較の邪魔になりやすい記号を削除
+    name = re.sub(r"[◆◇・･/／\\|｜【】\[\]（）()『』「」\-\−ー_＿:：,，.．]", "", name)
+
+    # 大文字小文字の差をなくす
+    name = name.lower()
+
+    return name
 # =============================================
 #   1件詳細解析用パーツ
 # =============================================
