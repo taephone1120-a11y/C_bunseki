@@ -398,7 +398,6 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                                 f"レビューID={review_item_id} / "
                                 f"ID一致={is_same_by_id} / "
                                 f"名前一致={is_same_by_name} / "
-                                f"語句一致={is_same_by_words} / "
                                 f"対象名={title[:80]} / "
                                 f"レビュー名={review_item_name[:80]}"
                             )
@@ -488,7 +487,10 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             "デバッグメモ": " / ".join(debug_logs[-20:]),
             "作品紹介文": description_text
         }
-    except:
+    except Exception as e:
+        print("【_internal_fetch_item エラー】", e)
+        import traceback
+        traceback.print_exc()
         return None
 
 # =============================================
