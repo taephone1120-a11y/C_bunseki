@@ -504,10 +504,28 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             "作品紹介文": description_text
         }
     except Exception as e:
-        print("【_internal_fetch_item エラー】", e)
+        error_message = f"商品解析エラー: {e}"
+        print("【_internal_fetch_item エラー】", error_message)
         import traceback
         traceback.print_exc()
-        return None
+
+        return {
+            "No.": 0,
+            "作家名": creator,
+            "商品名": title,
+            "価格(円)": price,
+            "商品URL": link,
+            "お気に入り数": favorite,
+            "購入者数": purchase_display,
+            "直近販売日1": "エラー",
+            "直近販売日2": "エラー",
+            "直近販売日3": "エラー",
+            "総評価数": 0,
+            "直近1ヶ月の評価数": "0件",
+            "一番初めの評価日": "エラー",
+            "デバッグメモ": error_message,
+            "作品紹介文": description_text
+        }
 
 # =============================================
 #   メインのスクレイピング制御関数
