@@ -263,7 +263,7 @@ def scrape_creema_fast(start_url, max_num):
                         except: pass
 
                             # 6. 直近1ヶ月の評価数
-                            rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
+                        rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
                             if rating_res.status_code == 200:
                                 rating_soup = BeautifulSoup(rating_res.content, "html.parser")
                                 voices = rating_soup.select(".p-creator-rating-rating__voice")
