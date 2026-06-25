@@ -76,9 +76,13 @@ else:
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=10, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
-# 🌟 バー（slider）ではなく、数値（number_input / date_input）で直接打ち込める形式に修正
+# 🌟 フィルターの初期値を「制限なし（全表示）」に修正
 st.sidebar.markdown('---')
 st.sidebar.header("📊 表示データの絞り込み")
+
+# 十分に広い日付範囲を定義
+past_limit_date = datetime.strptime("2000-01-01", "%Y-%m-%d").date()
+future_limit_date = datetime.strptime("2030-12-31", "%Y-%m-%d").date()
 
 # 1. 購入者数
 st.sidebar.markdown("**購入者数**")
@@ -93,34 +97,32 @@ with col_buy2:
 # 2. 直近販売日１
 st.sidebar.markdown("**直近販売日１**")
 col_d1_1, col_d1_tilde, col_d1_2 = st.sidebar.columns([4, 1, 4])
-today = datetime.now().date()
-default_min_date = today - timedelta(days=180)
 with col_d1_1:
-    min_date1 = st.date_input("直近販売日1（最小）", value=default_min_date, label_visibility="collapsed")
+    min_date1 = st.date_input("直近販売日1（最小）", value=past_limit_date, label_visibility="collapsed")
 with col_d1_tilde:
     st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
 with col_d1_2:
-    max_date1 = st.date_input("直近販売日1（最大）", value=today, label_visibility="collapsed")
+    max_date1 = st.date_input("直近販売日1（最大）", value=future_limit_date, label_visibility="collapsed")
 
 # 3. 直近販売日３
 st.sidebar.markdown("**直近販売日３**")
 col_d3_1, col_d3_tilde, col_d3_2 = st.sidebar.columns([4, 1, 4])
 with col_d3_1:
-    min_date3 = st.date_input("直近販売日3（最小）", value=default_min_date, label_visibility="collapsed")
+    min_date3 = st.date_input("直近販売日3（最小）", value=past_limit_date, label_visibility="collapsed")
 with col_d3_tilde:
     st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
 with col_d3_2:
-    max_date3 = st.date_input("直近販売日3（最大）", value=today, label_visibility="collapsed")
+    max_date3 = st.date_input("直近販売日3（最大）", value=future_limit_date, label_visibility="collapsed")
 
 # 4. 総評価数
 st.sidebar.markdown("**総評価数**")
 col_rev1, col_rev_tilde, col_rev2 = st.sidebar.columns([4, 1, 4])
 with col_rev1:
-    min_rev = st.number_input("総評価数（最小）", min_value=0, value=50, label_visibility="collapsed")
+    min_rev = st.number_input("総評価数（最小）", min_value=0, value=0, label_visibility="collapsed")
 with col_rev_tilde:
     st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
 with col_rev2:
-    max_rev = st.number_input("総評価数（最大）", min_value=0, value=300, label_visibility="collapsed")
+    max_rev = st.number_input("総評価数（最大）", min_value=0, value=99999, label_visibility="collapsed")
 
 # =============================================
 #   📲 LINE通知関数
@@ -447,9 +449,9 @@ if st.session_state.raw_data is not None:
             return datetime.strptime(match.group(0), "%Y.%m.%d").date()
         return None
 
-    # 日付のフィルタリング条件を作成
-    is_min_date1_default = (min_date1 == default_min_date)
-    is_min_date3_default = (min_date3 == default_min_date)
+    # 日付初期値判定用のフラグ
+    is_min_date1_default = (min_date1 == past_limit_date)
+    is_min_date3_default = (min_date3 == past_limit_date)
 
     def filter_row(row):
         # 1. 購入者数と総評価数のチェック
@@ -461,6 +463,7 @@ if st.session_state.raw_data is not None:
         if d1:
             if not (min_date1 <= d1 <= max_date1): return False
         else:
+            # 日付に変換できない（3ヶ月以上前など）場合、初期状態のままであれば通過させる
             if not is_min_date1_default: return False
             
         # 3. 直近販売日3のチェック
