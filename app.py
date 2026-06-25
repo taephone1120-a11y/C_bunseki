@@ -247,18 +247,26 @@ def scrape_creema_fast(start_url, max_num):
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
-                            # 【条件3・4】出力文字の判定
+                       # ✨【修正】ループを使わず、件数に応じて直接安全に代入する
                             recent_sales = ["-", "-", "-"]
                             
-                            # 5ページ（またはブレーキがかかるまで）見て1件も入っていなかった場合の判定
-                            if not sorted_dates:
-                                # 5ページ目まで到達した、かつ3ヶ月以内データが本当に0件だった場合
+                            total_found = len(sorted_dates)
+                            
+                            if total_found == 0:
+                                # 1件も入っていなかった場合
                                 recent_sales = ["取得失敗", "取得失敗", "取得失敗"]
-                            else:
-                                # 1件以上見つかっている場合は、見つかった分だけ上書き（残りは "-"）
-                                for idx in range(3):
-                                    if idx < len(sorted_dates): 
-                                        recent_sales[idx] = sorted_dates[idx]
+                            elif total_found == 1:
+                                # 1件だけの場合、2つ目と3つ目は "-" になる
+                                recent_sales[0] = sorted_dates[0]
+                            elif total_found == 2:
+                                # 2件の場合、3つ目は "-" になる
+                                recent_sales[0] = sorted_dates[0]
+                                recent_sales[1] = sorted_dates[1]
+                            elif total_found >= 3:
+                                # 3件以上の場合、すべて別々の日付を入れる
+                                recent_sales[0] = sorted_dates[0]
+                                recent_sales[1] = sorted_dates[1]
+                                recent_sales[2] = sorted_dates[2]
                                         
                         except: pass
 
