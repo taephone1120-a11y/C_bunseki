@@ -183,22 +183,24 @@ def scrape_creema_fast(start_url, max_num):
                         except: pass
 
                         # ====================================================
-                        # ✨【完全復活】 5. 評価ページの解析（重複増殖ブロック版）
+                        # 🏁【完全決着・検証コード移植版】5. 評価ページの解析
                         # ====================================================
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             if "?" in base_rating_url:
                                 base_rating_url = base_rating_url.split("?")[0]
                             
-                            local_three_months_ago = datetime.now() - timedelta(days=90)
-                            all_matched_dates = []
+                            all_found_dates = []
                             current_page = 1
                             current_url = base_rating_url
+                            
+                            # 検証コードと同じ、綺麗な比較用ターゲット文字列を作成
                             clean_target = " ".join(title.strip().split())
                             
-                            while current_url and current_page <= 10:  
+                            # 3ページ（または最大5ページ）めくって日付を確実に回収
+                            while current_url and current_page <= 3:  
                                 try:
-                                    res = requests.get(current_url, headers=headers, timeout=8)
+                                    res = requests.get(current_url, headers=headers, timeout=10)
                                     if res.status_code != 200: break
                                     
                                     soup = BeautifulSoup(res.content, "html.parser")
@@ -206,77 +208,41 @@ def scrape_creema_fast(start_url, max_num):
                                     if not blocks: break
                                     
                                     for block in blocks:
-                                        # ✨ このレビューブロックで、すでに日付を回収したかを記録するフラグ
-                                        has_saved_date = False
-                                        
                                         title_tags = block.select(".p-creator-rating-rating__title a")
+                                        is_target = False
                                         for t in title_tags:
-                                            # レビュー側リンクのURL（例: /item/15234296/detail）
-                                            review_href = t.get("href", "")
-                                            
-                                            # 🔍 URLから「/item/数字」の塊（例: /item/15234296）をシンプルに切り出す
-                                            review_item_path = ""
-                                            if "/item/" in review_href:
-                                                # /item/の直後の数字の部分を抽出
-                                                parts = review_href.split("/item/")
-                                                if len(parts) > 1:
-                                                    item_id = parts[1].split("/")[0]
-                                                    review_item_path = f"/item/{item_id}"
-                                            
-                                            # 🤝 レビュー側の商品パス（/item/15234296）が、元のURL（link）に含まれているか
-                                            if review_item_path and (review_item_path in link):
-                                                if not has_saved_date:
-                                                    voice_tag = block.select_one(".p-creator-rating-rating__voice")
-                                                    if voice_tag:
-                                                        date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
-                                                        if date_tag:
-                                                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-                                                            if date_match:
-                                                                review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                                all_matched_dates.append(review_date)
-                                                                has_saved_date = True
+                                            # ✨ 検証コードで成功した「完全一致」の判定ロジック
+                                            if " ".join(t.text.strip().split()) == clean_target:
+                                                is_target = True
                                                 break
                                         
-                                        # 1つのレビューの塊（block）からは、絶対に1回しか日付を回収しない
-                                        if found_in_this_block:
+                                        if is_target:
                                             voice_tag = block.select_one(".p-creator-rating-rating__voice")
                                             if voice_tag:
                                                 date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
                                                 if date_tag:
                                                     date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
                                                     if date_match:
-                                                        review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                        if review_date >= local_three_months_ago:
-                                                            all_matched_dates.append(review_date)
+                                                        date_obj = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                                        all_found_dates.append(date_obj)
                                                             
-                                    if len(all_matched_dates) >= 3:
-                                        break
-                                    
-                                    # 3ヶ月超えブレーキ
-                                    all_page_dates = []
-                                    for v_tag in soup.select(".p-creator-rating-rating__voice"):
-                                        d_tag = v_tag.select_one(".p-creator-rating-rating__date")
-                                        if d_tag:
-                                            d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", d_tag.text)
-                                            if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
-                                    if all_page_dates and max(all_page_dates) < local_three_months_ago: break
-                                    
                                     current_page += 1
                                     current_url = f"{base_rating_url}?page={current_page}"
                                     time.sleep(0.1)
                                 except:
                                     break
                             
-                            all_matched_dates.sort(reverse=True)
-                            sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
+                            # データを「新しい順」に並び替え
+                            all_found_dates.sort(reverse=True)
+                            final_3_dates = [d.strftime("%Y.%m.%d") for d in all_found_dates[:3]]
                             
-                            # ここで直近販売日を上書き（見つからない枠は「3ヶ月以上前」にする）
+                            # 結果の格納（空いている枠は「3ヶ月以上前」にする）
                             recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
-                            total_found = len(sorted_dates)
+                            total_found = len(final_3_dates)
                             
-                            if total_found >= 1: recent_sales[0] = sorted_dates[0]
-                            if total_found >= 2: recent_sales[1] = sorted_dates[1]
-                            if total_found >= 3: recent_sales[2] = sorted_dates[2]
+                            if total_found >= 1: recent_sales[0] = final_3_dates[0]
+                            if total_found >= 2: recent_sales[1] = final_3_dates[1]
+                            if total_found >= 3: recent_sales[2] = final_3_dates[2]
                                         
                         except: pass
 
