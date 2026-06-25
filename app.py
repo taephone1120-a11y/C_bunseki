@@ -181,7 +181,7 @@ def scrape_creema_fast(start_url, max_num):
                             if matches: review = matches.group(1)
                         except: pass
 
-# 5. 評価ページの解析（最新順ソート・条件分岐版）
+# 5. 評価ページの解析（最新順ソート・完全修正版）
                     if rating_link_tag:
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
@@ -201,17 +201,16 @@ def scrape_creema_fast(start_url, max_num):
                                     blocks = soup.select(".p-creator-rating-rating__content")
                                     if not blocks: break
                                     
-                                    page_matched_count = 0 # このページで見つかった件数
-                                    
+                                    # 上手くいくコードと全く同じ、純粋な回収ループ
                                     for block in blocks:
                                         title_tags = block.select(".p-creator-rating-rating__title a")
-                                        has_target_item = False
+                                        is_target = False
                                         for t in title_tags:
                                             if " ".join(t.text.strip().split()) == clean_target:
-                                                has_target_item = True
+                                                is_target = True
                                                 break
                                         
-                                        if has_target_item:
+                                        if is_target:
                                             voice_tag = block.select_one(".p-creator-rating-rating__voice")
                                             if voice_tag:
                                                 date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
@@ -219,16 +218,15 @@ def scrape_creema_fast(start_url, max_num):
                                                     date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
                                                     if date_match:
                                                         review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                                        # 3ヶ月以内のデータのみ対象にする
+                                                        # 3ヶ月以内のデータのみ回収対象にする
                                                         if review_date >= three_months_ago:
                                                             all_matched_dates.append(review_date)
-                                                            page_matched_count += 1
                                                             
-                                    # 【条件1】1ページ目で3つ以上見つかったら、2ページ目は見ずに即終了
-                                    if current_page == 1 and page_matched_count >= 3:
+                                    # ✨【修正】1ページ目のレビューを「全部見終わった後」で、3つ以上あるか判定する
+                                    if current_page == 1 and len(all_matched_dates) >= 3:
                                         break
                                     
-                                    # 【条件2】ブレーキ機能：ページ全体の最新日付が3ヶ月以上前なら打ち切り
+                                    # ブレーキ機能：ページ全体の最新日付が3ヶ月以上前なら打ち切り
                                     all_page_dates = []
                                     for v_tag in soup.select(".p-creator-rating-rating__voice"):
                                         d_tag = v_tag.select_one(".p-creator-rating-rating__date")
@@ -247,23 +245,18 @@ def scrape_creema_fast(start_url, max_num):
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
-                       # ✨【修正】ループを使わず、件数に応じて直接安全に代入する
+                            # 件数に応じて直接安全に代入する
                             recent_sales = ["-", "-", "-"]
-                            
                             total_found = len(sorted_dates)
                             
                             if total_found == 0:
-                                # 1件も入っていなかった場合
                                 recent_sales = ["取得失敗", "取得失敗", "取得失敗"]
                             elif total_found == 1:
-                                # 1件だけの場合、2つ目と3つ目は "-" になる
                                 recent_sales[0] = sorted_dates[0]
                             elif total_found == 2:
-                                # 2件の場合、3つ目は "-" になる
                                 recent_sales[0] = sorted_dates[0]
                                 recent_sales[1] = sorted_dates[1]
                             elif total_found >= 3:
-                                # 3件以上の場合、すべて別々の日付を入れる
                                 recent_sales[0] = sorted_dates[0]
                                 recent_sales[1] = sorted_dates[1]
                                 recent_sales[2] = sorted_dates[2]
