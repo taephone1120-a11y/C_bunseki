@@ -181,7 +181,7 @@ def scrape_creema_fast(start_url, max_num):
                             if matches: review = matches.group(1)
                         except: pass
 
-                    # 5. 評価ページの解析
+# 5. 評価ページの解析（最新順ソート・条件分岐版）
                     if rating_link_tag:
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
@@ -191,6 +191,7 @@ def scrape_creema_fast(start_url, max_num):
                             current_url = base_rating_url
                             clean_target = " ".join(title.strip().split())
                             
+                            # 5ページまで、または条件を満たすまでループ
                             while current_url and current_page <= 5:  
                                 try:
                                     res = requests.get(current_url, headers=headers, timeout=8)
@@ -199,6 +200,8 @@ def scrape_creema_fast(start_url, max_num):
                                     soup = BeautifulSoup(res.content, "html.parser")
                                     blocks = soup.select(".p-creator-rating-rating__content")
                                     if not blocks: break
+                                    
+                                    page_matched_count = 0 # このページで見つかった件数
                                     
                                     for block in blocks:
                                         title_tags = block.select(".p-creator-rating-rating__title a")
@@ -216,12 +219,16 @@ def scrape_creema_fast(start_url, max_num):
                                                     date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
                                                     if date_match:
                                                         review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                                        # 3ヶ月以内のデータのみ対象にする
                                                         if review_date >= three_months_ago:
                                                             all_matched_dates.append(review_date)
+                                                            page_matched_count += 1
                                                             
-                                    all_matched_dates.sort(reverse=True)
-                                    if len(all_matched_dates) >= 3: break  
+                                    # 【条件1】1ページ目で3つ以上見つかったら、2ページ目は見ずに即終了
+                                    if current_page == 1 and page_matched_count >= 3:
+                                        break
                                     
+                                    # 【条件2】ブレーキ機能：ページ全体の最新日付が3ヶ月以上前なら打ち切り
                                     all_page_dates = []
                                     for v_tag in soup.select(".p-creator-rating-rating__voice"):
                                         d_tag = v_tag.select_one(".p-creator-rating-rating__date")
@@ -235,14 +242,25 @@ def scrape_creema_fast(start_url, max_num):
                                     time.sleep(0.1)
                                 except:
                                     break
-                                    
+                            
+                            # データの並び替え（新しい順）
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
-                            recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
-                            for idx in range(3):
-                                if idx < len(sorted_dates): 
-                                    recent_sales[idx] = sorted_dates[idx]
+                            # 【条件3・4】出力文字の判定
+                            recent_sales = ["-", "-", "-"]
+                            
+                            # 5ページ（またはブレーキがかかるまで）見て1件も入っていなかった場合の判定
+                            if not sorted_dates:
+                                # 5ページ目まで到達した、かつ3ヶ月以内データが本当に0件だった場合
+                                recent_sales = ["取得失敗", "取得失敗", "取得失敗"]
+                            else:
+                                # 1件以上見つかっている場合は、見つかった分だけ上書き（残りは "-"）
+                                for idx in range(3):
+                                    if idx < len(sorted_dates): 
+                                        recent_sales[idx] = sorted_dates[idx]
+                                        
+                        except: pass
 
                             # 6. 直近1ヶ月の評価数
                             rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
