@@ -214,6 +214,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
     first_review_date = "データなし"
     description_text = "取得失敗"
     recent_sales = ["ー", "ー", "ー"]
+    debug_logs = []
 
     try:
         res = requests.get(link, headers=headers, timeout=10)
@@ -247,7 +248,8 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         print("商品名:", title)
         print("商品URL:", link)
         print("rating_link_tag:", rating_link_tag.get("href") if rating_link_tag else "なし")
-
+        debug_logs.append(f"評価リンク: {rating_link_tag.get('href') if rating_link_tag else 'なし'}")
+        
         if rating_link_tag:
             href_attr = rating_link_tag["href"]
             base_rating_url = href_attr if href_attr.startswith("http") else "https://www.creema.jp" + href_attr
@@ -269,11 +271,13 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             for current_page in range(1, 6):  # 5ページまで探索
                 page_url = f"{base_rating_url}?page={current_page}"
                 print(f" - 取得URL: {page_url}")
-
+                debug_logs.append(f"{current_page}ページ目URL: {page_url}")
+                
                 r_res = requests.get(page_url, headers=headers, timeout=10)
 
                 if r_res.status_code != 200:
                     print(f" - {current_page}ページ目: ステータスコード {r_res.status_code} のため終了")
+                    debug_logs.append(f"{current_page}ページ目: レビューブロック {len(blocks)}件")
                     break
 
                 r_soup = BeautifulSoup(r_res.content, "html.parser")
@@ -355,6 +359,15 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         print("-" * 50)
 
                     if not is_same_item:
+                        if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
+                            debug_logs.append(
+                                "対象外判定: "
+                                f"page={current_page} / "
+                                f"対象ID={target_item_id} / "
+                                f"レビューID={review_item_id} / "
+                                f"対象名={target_name[:80]} / "
+                                f"レビュー名={review_item_name[:80]}"
+                            )
                         continue
 
                     print("【一致】対象商品として処理")
@@ -373,19 +386,18 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                     if not date_tag:
                         if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
-                            print("【日付タグなし】")
-                            print("ページ:", current_page)
-                            print("レビュー本文:", block.get_text(" ", strip=True)[:300])
-                            print("-" * 50)
+                            debug_logs.append(
+                                f"日付タグなし: page={current_page} / レビュー名={review_item_name[:80]}"
+                            )
                         continue
 
                     d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_tag.text)
 
                     if not d_match:
                         if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
-                            print("【日付形式不一致】")
-                            print("date_tag.text:", date_tag.text)
-                            print("-" * 50)
+                            debug_logs.append(
+                                f"日付形式不一致: page={current_page} / date_text={date_tag.text}"
+                            )
                         continue
 
                     found_date = datetime(
@@ -403,8 +415,10 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         continue
 
                     seen_review_keys.add(review_key)
-                    all_found_dates.append(found_date)
-                    found_in_page += 1
+                    if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
+                        debug_logs.append(
+                            f"取得成功: page={current_page} / {found_date.strftime('%Y.%m.%d')} / {review_item_name[:80]}"
+                        )
 
                 print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
                 time.sleep(0.2)
@@ -424,11 +438,21 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             if all_found_dates: first_review_date = min(all_found_dates).strftime("%Y.%m.%d")
 
         return {
-            "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
-            "お気に入り数": favorite, "購入者数": purchase_display,  
-            "直近販売日1": recent_sales[0], "直近販売日2": recent_sales[1], "直近販売日3": recent_sales[2],
-            "総評価数": review, "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
-            "作品紹介文": description_text 
+            "No.": 0,
+            "作家名": creator,
+            "商品名": title,
+            "価格(円)": price,
+            "商品URL": link,
+            "お気に入り数": favorite,
+            "購入者数": purchase_display,
+            "直近販売日1": recent_sales[0],
+            "直近販売日2": recent_sales[1],
+            "直近販売日3": recent_sales[2],
+            "総評価数": review,
+            "直近1ヶ月の評価数": recent_review_display,
+            "一番初めの評価日": first_review_date,
+            "デバッグメモ": " / ".join(debug_logs[-20:]),
+            "作品紹介文": description_text
         }
     except:
         return None
