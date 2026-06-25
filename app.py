@@ -214,12 +214,17 @@ def scrape_creema_fast(start_url, max_num):
                                             # レビュー側リンクのURL（例: /item/15234296/detail）
                                             review_href = t.get("href", "")
                                             
-                                            # 🔍 双方のURLから「商品ID（数字の塊）」を抜き出す
-                                            match_review_id = re.search(r"/item/(\d+)", review_href)
-                                            match_origin_id = re.search(r"/item/(\d+)", link) # linkは詳細解析関数の最初で定義されている元のURL
+                                            # 🔍 URLから「/item/数字」の塊（例: /item/15234296）をシンプルに切り出す
+                                            review_item_path = ""
+                                            if "/item/" in review_href:
+                                                # /item/の直後の数字の部分を抽出
+                                                parts = review_href.split("/item/")
+                                                if len(parts) > 1:
+                                                    item_id = parts[1].split("/")[0]
+                                                    review_item_path = f"/item/{item_id}"
                                             
-                                            # 🤝 商品IDが完全に一致したら、同一商品とみなす！
-                                            if match_review_id and match_origin_id and match_review_id.group(1) == match_origin_id.group(1):
+                                            # 🤝 レビュー側の商品パス（/item/15234296）が、元のURL（link）に含まれているか
+                                            if review_item_path and (review_item_path in link):
                                                 if not has_saved_date:
                                                     voice_tag = block.select_one(".p-creator-rating-rating__voice")
                                                     if voice_tag:
