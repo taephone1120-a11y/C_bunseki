@@ -180,9 +180,8 @@ def scrape_creema_fast(start_url, max_num):
                             matches = re.search(r"（(\d+)件）", rating_link_tag.text)
                             if matches: review = matches.group(1)
                         except: pass
-                            
-# 5. 評価ページの解析（最新順ソート・増殖防止修正版）
-                    if rating_link_tag:
+
+                        # 5. 評価ページの解析（ここに正しく結合）
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             if "?" in base_rating_url:
@@ -204,13 +203,12 @@ def scrape_creema_fast(start_url, max_num):
                                     if not blocks: break
                                     
                                     for block in blocks:
-                                        # ✨ このレビューブロックで、すでに日付を回収したかを記録するフラグ
+                                        # 1つのレビューブロック内で処理を1回だけにするためのフラグ
                                         has_saved_date = False
                                         
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         for t in title_tags:
                                             if " ".join(t.text.strip().split()) == clean_target:
-                                                # まだこのブロックから日付を取っていなければ回収する
                                                 if not has_saved_date:
                                                     voice_tag = block.select_one(".p-creator-rating-rating__voice")
                                                     if voice_tag:
@@ -221,7 +219,6 @@ def scrape_creema_fast(start_url, max_num):
                                                                 review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
                                                                 if review_date >= local_three_months_ago:
                                                                     all_matched_dates.append(review_date)
-                                                                    # 回収したのでフラグをTrueにして、同じブロック内では2度と追加させない
                                                                     has_saved_date = True
                                                 break
                                                             
