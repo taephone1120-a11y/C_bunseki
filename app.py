@@ -1,8 +1,13 @@
 import time
 import re
+import random
 import requests
+import io
+import pandas as pd
+import streamlit as st
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
     """
@@ -183,8 +188,11 @@ def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
     except Exception as e:
         return None
 
-# ⚠️ ここから下に、元々あった scrape_creema_fast などの続きの関数が並ぶようにしてください。
 
+def scrape_creema_fast(start_url, max_num):
+    """
+    Creemaの一覧から商品データを高速収集するメイン関数
+    """
     # ----------------------------------------------------
     #  メインロジックの開始（関数内部）
     # ----------------------------------------------------
@@ -297,9 +305,6 @@ def _internal_fetch_item(item_data, headers, one_month_ago, three_months_ago):
 # =============================================
 #    🚀 ボタン連動・実行処理エリア
 # =============================================
-# 💡 重複していた古い処理エリアは削除し、
-#    セッション管理を行う以下の正しい処理一本に統合しました。
-
 if "raw_data" not in st.session_state: st.session_state.raw_data = None
 if "market_total" not in st.session_state: st.session_state.market_total = 170000
 if "target_max_items" not in st.session_state: st.session_state.target_max_items = 100
@@ -314,7 +319,6 @@ if start_button:
         send_line_notification(cond_text, max_items)
         st.session_state.target_max_items = max_items
         
-        # リサーチ関数を実行（スピナー表示を伴う）
         with st.spinner("🔄 Creemaのデータを解析中..."):
             res_dict = scrape_creema_fast(target_url, max_items)
             
@@ -325,7 +329,6 @@ if start_button:
             st.toast(f"🎉 取得完了しました！（全体総件数: {res_dict['market_total']:,}件）", icon="✅")
         else:
             st.error("❌ データが取得できませんでした。URLやキーワードを再度確認してください。")
-
 
 # =============================================
 #    Excelダウンロード用バイナリ生成
