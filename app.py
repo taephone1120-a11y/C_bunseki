@@ -256,55 +256,55 @@ def scrape_creema_fast(start_url, max_num):
                                         
                         except: pass
 
-                    # # 6. 直近1ヶ月の評価数（※元々あった場所。ここから下は変更なし）
+                    # 6. 直近1ヶ月の評価数（インデント修正版）
                     if base_rating_url:
-                    rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
-                    if rating_res.status_code == 200:
-                        rating_soup = BeautifulSoup(rating_res.content, "html.parser")
-                        voices = rating_soup.select(".p-creator-rating-rating__voice")
-                        last_voices = voices 
-                        
-                        recent_count = 0
-                        for voice in voices:
+                        rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
+                        if rating_res.status_code == 200:
+                            rating_soup = BeautifulSoup(rating_res.content, "html.parser")
+                            voices = rating_soup.select(".p-creator-rating-rating__voice")
+                            last_voices = voices 
+                            
+                            recent_count = 0
+                            for voice in voices:
+                                try:
+                                    date_tag = voice.select_one(".p-creator-rating-rating__date")
+                                    if date_tag:
+                                        date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text.strip())
+                                        if date_match and datetime.strptime(date_match.group(1), "%Y.%m.%d") >= one_month_ago:
+                                            recent_count += 1
+                                except: pass
+                            
+                            recent_review_display = "20件以上" if (recent_count >= 20 and len(voices) >= 20) else f"{recent_count}件"
+
                             try:
-                                date_tag = voice.select_one(".p-creator-rating-rating__date")
-                                if date_tag:
-                                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text.strip())
-                                    if date_match and datetime.strptime(date_match.group(1), "%Y.%m.%d") >= one_month_ago:
-                                        recent_count += 1
+                                all_links = rating_soup.find_all("a", href=True)
+                                page_data = []
+                                for a_tag in all_links:
+                                    href = a_tag["href"]
+                                    p_match = re.search(r"page=(\d+)", href) or re.search(r"/rating/sale/(\d+)", href)
+                                    if p_match: page_data.append((int(p_match.group(1)), href if href.startswith("http") else "https://www.creema.jp" + href))
+                                if page_data: _, last_page_url = max(page_data, key=lambda x: x[0])
+                            except: pass
+
+                        if last_page_url:
+                            try:
+                                last_page_res = requests.get(last_page_url, headers=headers, timeout=10)
+                                if last_page_res.status_code == 200:
+                                    last_voices = BeautifulSoup(last_page_res.content, "html.parser").select(".p-creator-rating-rating__voice")
                             except: pass
                         
-                        recent_review_display = "20件以上" if (recent_count >= 20 and len(voices) >= 20) else f"{recent_count}件"
-
-                        try:
-                            all_links = rating_soup.find_all("a", href=True)
-                            page_data = []
-                            for a_tag in all_links:
-                                href = a_tag["href"]
-                                p_match = re.search(r"page=(\d+)", href) or re.search(r"/rating/sale/(\d+)", href)
-                                if p_match: page_data.append((int(p_match.group(1)), href if href.startswith("http") else "https://www.creema.jp" + href))
-                            if page_data: _, last_page_url = max(page_data, key=lambda x: x[0])
-                        except: pass
-
-                    if last_page_url:
-                        try:
-                            last_page_res = requests.get(last_page_url, headers=headers, timeout=10)
-                            if last_page_res.status_code == 200:
-                                last_voices = BeautifulSoup(last_page_res.content, "html.parser").select(".p-creator-rating-rating__voice")
-                        except: pass
-                    
-                    if last_voices:
-                        try:
-                            oldest_date = None
-                            for voice in last_voices:
-                                date_tag = voice.select_one(".p-creator-rating-rating__date")
-                                if date_tag:
-                                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-                                    if date_match:
-                                        current_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-                                        if oldest_date is None or current_date < oldest_date: oldest_date = current_date
-                            if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
-                        except: first_review_date = "解析失敗"
+                        if last_voices:
+                            try:
+                                oldest_date = None
+                                for voice in last_voices:
+                                    date_tag = voice.select_one(".p-creator-rating-rating__date")
+                                    if date_tag:
+                                        date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                                        if date_match:
+                                            current_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                            if oldest_date is None or current_date < oldest_date: oldest_date = current_date
+                                if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
+                            except: first_review_date = "解析失敗"
             except:
                 description_text = "通信エラー"
 
