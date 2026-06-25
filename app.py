@@ -247,34 +247,97 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             if "?" in base_rating_url: base_rating_url = base_rating_url.split("?")[0]
             
             all_found_dates = []
-            target_name = "".join(title.split())
-            
-            # --- 探索ログ追加 ---
-            print(f"[{title[:15]}...] レビュー探索開始")
-            
-            for current_page in range(1, 6): # 5ページまで探索
-                r_res = requests.get(f"{base_rating_url}?page={current_page}", headers=headers, timeout=10)
-                if r_res.status_code != 200: break
-                
-                r_soup = BeautifulSoup(r_res.content, "html.parser")
-                blocks = r_soup.select(".p-creator-rating-list__item, .p-creator-rating-rating__content")
-                if not blocks: break
-                
-                found_in_page = 0
-                for block in blocks:
-                    item_name_tag = block.select_one(".p-creator-rating-rating__title a, .p-creator-rating-list__item-title a")
-                    if item_name_tag:
-                        review_item_name = "".join(item_name_tag.text.split())
-                        if target_name in review_item_name or review_item_name in target_name:
-                            date_tag = block.select_one(".p-creator-rating-rating__date, .p-creator-rating-list__item-date")
-                            if date_tag:
-                                d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_tag.text)
-                                if d_match:
-                                    all_found_dates.append(datetime(int(d_match.group(1)), int(d_match.group(2)), int(d_match.group(3))))
-                                    found_in_page += 1
-                
-                print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
-                time.sleep(0.2)
+seen_review_keys = set()
+
+target_name = "".join(title.split())
+
+# 商品URLから商品IDを取得
+target_item_id_match = re.search(r"/item/(\d+)/", link)
+target_item_id = target_item_id_match.group(1) if target_item_id_match else None
+
+# --- 探索ログ追加 ---
+print(f"[{title[:15]}...] レビュー探索開始")
+
+for current_page in range(1, 6):  # 5ページまで探索
+    r_res = requests.get(f"{base_rating_url}?page={current_page}", headers=headers, timeout=10)
+    if r_res.status_code != 200:
+        break
+
+    r_soup = BeautifulSoup(r_res.content, "html.parser")
+
+    # 外側のレビュー1件単位だけを優先して取得
+    blocks = r_soup.select(".p-creator-rating-list__item")
+
+    # もし上のセレクタで取れない場合だけ、旧セレクタを使う
+    if not blocks:
+        blocks = r_soup.select(".p-creator-rating-rating__content")
+
+    if not blocks:
+        break
+
+    found_in_page = 0
+
+    for block in blocks:
+        # レビュー内の商品リンクを取得
+        item_name_tag = block.select_one(
+            '.p-creator-rating-rating__title a[href*="/item/"], '
+            '.p-creator-rating-list__item-title a[href*="/item/"], '
+            'a[href*="/item/"]'
+        )
+
+        if not item_name_tag:
+            continue
+
+        review_href = item_name_tag.get("href", "")
+
+        # レビュー側の商品IDを取得
+        review_item_id_match = re.search(r"/item/(\d+)/", review_href)
+        review_item_id = review_item_id_match.group(1) if review_item_id_match else None
+
+        # 商品IDで一致判定。IDが取れない場合だけ商品名で判定
+        if target_item_id and review_item_id:
+            is_same_item = target_item_id == review_item_id
+        else:
+            review_item_name = "".join(item_name_tag.text.split())
+            is_same_item = target_name in review_item_name or review_item_name in target_name
+
+        if not is_same_item:
+            continue
+
+        # 日付を取得
+        date_tag = block.select_one(
+            ".p-creator-rating-rating__date, "
+            ".p-creator-rating-list__item-date"
+        )
+
+        if not date_tag:
+            continue
+
+        d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_tag.text)
+
+        if not d_match:
+            continue
+
+        found_date = datetime(
+            int(d_match.group(1)),
+            int(d_match.group(2)),
+            int(d_match.group(3))
+        )
+
+        # 同じレビューを二重取得しないためのキー
+        # 同じ日に複数レビューがある場合は、レビュー本文が違えば別件として残る
+        review_text = block.get_text(" ", strip=True)
+        review_key = f"{review_href}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
+
+        if review_key in seen_review_keys:
+            continue
+
+        seen_review_keys.add(review_key)
+        all_found_dates.append(found_date)
+        found_in_page += 1
+
+    print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
+    time.sleep(0.2)
             
             all_found_dates.sort(reverse=True)
             for i in range(min(3, len(all_found_dates))):
