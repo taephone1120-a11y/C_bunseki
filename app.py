@@ -183,9 +183,8 @@ def scrape_creema_fast(start_url, max_num):
                         except: pass
 
                         # ====================================================
-                        # 🏁【完全一本化】5. 評価ページの解析 ＆ 余計なコードを全消去
+                        # 🏁【完全一本化・構文エラー修正版】5. 評価ページの解析
                         # ====================================================
-                        # ※古い穴埋めコードやダブりの原因となる残骸をすべて排除しました。
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             if "?" in base_rating_url:
@@ -195,7 +194,7 @@ def scrape_creema_fast(start_url, max_num):
                             current_page = 1
                             current_url = base_rating_url
                             
-                            # 検証コードと100%同じ文字列処理
+                            # 検証コードと同じ文字列処理
                             clean_target = " ".join(title.strip().split())
                             
                             # 3ページ目まで確実にスキャン
@@ -236,8 +235,7 @@ def scrape_creema_fast(start_url, max_num):
                             all_found_dates.sort(reverse=True)
                             final_3_dates = [d.strftime("%Y.%m.%d") for d in all_found_dates[:3]]
                             
-                            # 🎯【バグの全消去】検証コードの結果をそのまま画面の枠へマッピング
-                            # データがない枠は、同じ日付をコピーせず「3ヶ月以上前」で確定させます
+                            # 検証コードの結果をそのままマッピング（ダブり防止）
                             recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
                             if len(final_3_dates) >= 1: recent_sales[0] = final_3_dates[0]
                             if len(final_3_dates) >= 2: recent_sales[1] = final_3_dates[1]
@@ -246,35 +244,42 @@ def scrape_creema_fast(start_url, max_num):
                         except:
                             recent_sales = ["解析失敗", "解析失敗", "解析失敗"]
 
-                    # 6. 直近1ヶ月の評価数（※ここは元々の処理をそのまま継続）
-                    if base_rating_url:
-                        rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
-                        if rating_res.status_code == 200:
-                            rating_soup = BeautifulSoup(rating_res.content, "html.parser")
-                            voices = rating_soup.select(".p-creator-rating-rating__voice")
-                            last_voices = voices 
-                            
-                            recent_count = 0
-                            for voice in voices:
-                                try:
-                                    date_tag = voice.select_one(".p-creator-rating-rating__date")
-                                    if date_tag:
-                                        date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text.strip())
-                                        if date_match and datetime.strptime(date_match.group(1), "%Y.%m.%d") >= one_month_ago:
-                                            recent_count += 1
-                                except: pass
-                            
-                            recent_review_display = "20件以上" if (recent_count >= 20 and len(voices) >= 20) else f"{recent_count}件"
+                    # 6. 直近1ヶ月の評価数
+                    recent_review_display = "0件"
+                    first_review_date = "データなし"
+                    last_page_url = None
+                    last_voices = None
 
-                            try:
-                                all_links = rating_soup.find_all("a", href=True)
-                                page_data = []
-                                for a_tag in all_links:
-                                    href = a_tag["href"]
-                                    p_match = re.search(r"page=(\d+)", href) or re.search(r"/rating/sale/(\d+)", href)
-                                    if p_match: page_data.append((int(p_match.group(1)), href if href.startswith("http") else "https://www.creema.jp" + href))
-                                if page_data: _, last_page_url = max(page_data, key=lambda x: x[0])
-                            except: pass
+                    if base_rating_url:
+                        try:
+                            rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
+                            if rating_res.status_code == 200:
+                                rating_soup = BeautifulSoup(rating_res.content, "html.parser")
+                                voices = rating_soup.select(".p-creator-rating-rating__voice")
+                                last_voices = voices 
+                                
+                                recent_count = 0
+                                for voice in voices:
+                                    try:
+                                        date_tag = voice.select_one(".p-creator-rating-rating__date")
+                                        if date_tag:
+                                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text.strip())
+                                            if date_match and datetime.strptime(date_match.group(1), "%Y.%m.%d") >= one_month_ago:
+                                                recent_count += 1
+                                    except: pass
+                                
+                                recent_review_display = "20件以上" if (recent_count >= 20 and len(voices) >= 20) else f"{recent_count}件"
+
+                                try:
+                                    all_links = rating_soup.find_all("a", href=True)
+                                    page_data = []
+                                    for a_tag in all_links:
+                                        href = a_tag["href"]
+                                        p_match = re.search(r"page=(\d+)", href) or re.search(r"/rating/sale/(\d+)", href)
+                                        if p_match: page_data.append((int(p_match.group(1)), href if href.startswith("http") else "https://www.creema.jp" + href))
+                                    if page_data: _, last_page_url = max(page_data, key=lambda x: x[0])
+                                except: pass
+                        except: pass
 
                         if last_page_url:
                             try:
@@ -296,7 +301,7 @@ def scrape_creema_fast(start_url, max_num):
                                 if oldest_date: first_review_date = oldest_date.strftime("%Y.%m.%d")
                             except: first_review_date = "解析失敗"
 
-            # 🚪 関数の出口（ここで確定したrecent_salesの値をそのまま辞書に詰めて送出）
+            # 🚪 関数の出口（確定した結果をそのまま辞書に詰めて送出）
             return {
                 "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
                 "お気に入り数": favorite, "購入者数": purchase_count,  
@@ -308,7 +313,7 @@ def scrape_creema_fast(start_url, max_num):
                 "作品紹介文": description_text 
             }
 
-        except:
+        except Exception as e:
             return None
 
     # ----------------------------------------------------
