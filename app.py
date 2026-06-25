@@ -286,12 +286,19 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                 found_in_page = 0
 
                 for block in blocks:
-                    # レビュー内の商品リンクを取得
+                                        # レビュー内の商品名リンクを優先して取得
                     item_name_tag = block.select_one(
                         '.p-creator-rating-rating__title a[href*="/item/"], '
-                        '.p-creator-rating-list__item-title a[href*="/item/"], '
-                        'a[href*="/item/"]'
+                        '.p-creator-rating-list__item-title a[href*="/item/"]'
                     )
+
+                    # 商品名リンクが取れない場合だけ、文字が入っている /item/ リンクを探す
+                    if not item_name_tag:
+                        item_links = block.select('a[href*="/item/"]')
+                        for a in item_links:
+                            if a.get_text(strip=True):
+                                item_name_tag = a
+                                break
 
                     if not item_name_tag:
                         continue
@@ -302,11 +309,17 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     review_item_id_match = re.search(r"/item/(\d+)", review_href)
                     review_item_id = review_item_id_match.group(1) if review_item_id_match else None
 
+                    # hrefから商品IDが取れない場合、ブロック全体のHTMLから探す
+                    if not review_item_id:
+                        block_html = str(block)
+                        review_item_id_match = re.search(r"/item/(\d+)", block_html)
+                        review_item_id = review_item_id_match.group(1) if review_item_id_match else None
+
                     # 商品IDで一致判定。IDが取れない場合だけ商品名で判定
                     if target_item_id and review_item_id:
                         is_same_item = target_item_id == review_item_id
                     else:
-                        review_item_name = "".join(item_name_tag.text.split())
+                        review_item_name = "".join(item_name_tag.get_text(strip=True).split())
                         is_same_item = target_name in review_item_name or review_item_name in target_name
 
                     if not is_same_item:
