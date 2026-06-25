@@ -246,7 +246,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             base_rating_url = href_attr if href_attr.startswith("http") else "https://www.creema.jp" + href_attr
             if "?" in base_rating_url: base_rating_url = base_rating_url.split("?")[0]
             
-                        all_found_dates = []
+            all_found_dates = []
             seen_review_keys = set()
 
             target_name = "".join(title.split())
