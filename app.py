@@ -211,9 +211,15 @@ def scrape_creema_fast(start_url, max_num):
                                         
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         for t in title_tags:
+                                            # レビュー側のフルネーム（空白を詰める）
                                             review_title = "".join(t.text.strip().split())
-                                            if clean_target in review_title or review_title in "".join(title.strip().split()):
-                                                # 🛑 まだこのブロックから日付を取っていなければ1回だけ回収する
+                                            
+                                            # 一覧ページ側の名前から末尾の「...」や「…」を消し、空白を詰める
+                                            clean_origin = title.strip().rstrip(".…")
+                                            origin_title = "".join(clean_origin.split())
+                                            
+                                            # 🤝 【前方一致判定】長いレビュー名の先頭が、一覧ページ名で始まっているか
+                                            if review_title.startswith(origin_title) or origin_title in review_title:
                                                 if not has_saved_date:
                                                     voice_tag = block.select_one(".p-creator-rating-rating__voice")
                                                     if voice_tag:
@@ -224,9 +230,7 @@ def scrape_creema_fast(start_url, max_num):
                                                                 review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
                                                                 if review_date >= local_three_months_ago:
                                                                     all_matched_dates.append(review_date)
-                                                                    # 回収したのでフラグを立てる
                                                                     has_saved_date = True
-                                                # ヒットした時点でこの商品のaタグのループは抜ける
                                                 break
                                         
                                         # 1つのレビューの塊（block）からは、絶対に1回しか日付を回収しない
