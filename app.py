@@ -5,6 +5,7 @@ import random
 import requests
 import json
 import textwrap
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -242,6 +243,15 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         # レビューページ解析
         rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
         if rating_link_tag:
+        print("========== 商品解析開始 ==========")
+        print("商品名:", title)
+        print("商品URL:", link)
+
+        # レビューページ解析
+        rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
+        print("rating_link_tag:", rating_link_tag.get("href") if rating_link_tag else "なし")
+
+        if rating_link_tag:
             href_attr = rating_link_tag["href"]
             base_rating_url = href_attr if href_attr.startswith("http") else "https://www.creema.jp" + href_attr
             if "?" in base_rating_url: base_rating_url = base_rating_url.split("?")[0]
@@ -364,11 +374,20 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     )
 
                     if not date_tag:
+                        if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
+                            print("【日付タグなし】")
+                            print("ページ:", current_page)
+                            print("レビュー本文:", block.get_text(" ", strip=True)[:300])
+                            print("-" * 50)
                         continue
 
                     d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_tag.text)
 
                     if not d_match:
+                        if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
+                            print("【日付形式不一致】")
+                            print("date_tag.text:", date_tag.text)
+                            print("-" * 50)
                         continue
 
                     found_date = datetime(
@@ -391,7 +410,12 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                 print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
                 time.sleep(0.2)
-            
+
+            print("【最終確認】")
+            print("商品名:", title)
+            print("取得できた日付数:", len(all_found_dates))
+            print("取得できた日付:", [d.strftime("%Y.%m.%d") for d in all_found_dates])
+            print("=" * 60)            
             all_found_dates.sort(reverse=True)
             for i in range(min(3, len(all_found_dates))):
                 recent_sales[i] = all_found_dates[i].strftime("%Y.%m.%d")
@@ -480,7 +504,7 @@ def scrape_creema_fast(start_url, max_num):
     progress_bar = st.progress(0)
     scraped_data = []
     
-    max_workers = 4 if total_found > 100 else 8
+    max_workers = 1  # デバッグ中だけ1にする
     current_idx = 0
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
