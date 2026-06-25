@@ -258,22 +258,22 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             # --- 探索ログ追加 ---
             print(f"[{title[:15]}...] レビュー探索開始")
 
-            for current_page in range(1, 6):  # 5ページまで探索
+                for current_page in range(1, 6):  # 5ページまで探索
                 page_url = f"{base_rating_url}?page={current_page}"
                 print(f" - 取得URL: {page_url}")
 
                 r_res = requests.get(page_url, headers=headers, timeout=10)
 
-               if r_res.status_code != 200:
+                if r_res.status_code != 200:
                     print(f" - {current_page}ページ目: ステータスコード {r_res.status_code} のため終了")
                     break
 
                 r_soup = BeautifulSoup(r_res.content, "html.parser")
 
-    # 外側のレビュー1件単位だけを優先して取得
+                # 外側のレビュー1件単位だけを優先して取得
                 blocks = r_soup.select(".p-creator-rating-list__item")
 
-    # もし上のセレクタで取れない場合だけ、旧セレクタを使う
+                # もし上のセレクタで取れない場合だけ、旧セレクタを使う
                 if not blocks:
                     blocks = r_soup.select(".p-creator-rating-rating__content")
 
