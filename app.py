@@ -183,35 +183,31 @@ def scrape_creema_fast(start_url, max_num):
                             
 # 🛠️ いまある「if rating_link_tag:」の【すぐ上】にこれを追加
 st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {rating_link_tag}")
-# 5. 評価ページの解析（エラー強制可視化版）
+# 5. 評価ページの解析（ルート確認・エラー解消版）
+                    # ✨【安全な位置】ここにルート確認の警告を配置
+                    st.warning(f"🔎【ルート判定】商品名: {title} / リンクの有無: {'あり' if rating_link_tag else 'なし (ここでスキップされてます)'}")
+
                     if rating_link_tag:
                         try:
-                            # 💡 デバッグ：rating_link_tagの正体を調べる
-                            # st.write(f"🔍 rating_link_tagの型: {type(rating_link_tag)}")
-                            
-                            # タグオブジェクトの場合と、すでに文字列（URL）の場合の両方に対応させる
                             if isinstance(rating_link_tag, str):
                                 href = rating_link_tag
                             else:
                                 href = rating_link_tag.get("href", "")
                                 
                             if not href:
-                                st.error("❌ 評価ページのリンク（href）が取得できませんでした。")
+                                st.error("❌ 評価ページのリンク（href）が空っぽです。")
                                 
                             base_rating_url = "https://www.creema.jp" + href if not href.startswith("http") else href
                             if "?" in base_rating_url:
                                 base_rating_url = base_rating_url.split("?")[0]
                             
                             local_three_months_ago = datetime.now() - timedelta(days=90)
-                            
                             all_matched_dates = []
                             current_page = 1
                             current_url = base_rating_url
                             clean_target = " ".join(title.strip().split())
-                            
                             page_hit_counts = {}
                             
-                            # ページめくりループ（最大10ページ）
                             while current_url and current_page <= 10:  
                                 try:
                                     res = requests.get(current_url, headers=headers, timeout=8)
@@ -233,7 +229,6 @@ st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {
                                         
                                         if found_in_this_block:
                                             page_hit_counts[f"{current_page}ページ目"] += 1
-                                            
                                             voice_tag = block.select_one(".p-creator-rating-rating__voice")
                                             if voice_tag:
                                                 date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
@@ -247,7 +242,6 @@ st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {
                                     if len(all_matched_dates) >= 3:
                                         break
                                     
-                                    # ブレーキ機能
                                     all_page_dates = []
                                     for v_tag in soup.select(".p-creator-rating-rating__voice"):
                                         d_tag = v_tag.select_one(".p-creator-rating-rating__date")
@@ -263,7 +257,6 @@ st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {
                                     st.error(f"❌ ループ内エラー: {e}")
                                     break
                             
-                            # 画面にヒット数を表示
                             st.info(f"📊【名前ヒット数チェック】\n作品名: {title}\n結果: {page_hit_counts}")
                             
                             all_matched_dates.sort(reverse=True)
@@ -280,9 +273,7 @@ st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {
                                 if total_found >= 3: recent_sales[2] = sorted_dates[2]
                                         
                         except Exception as main_error: 
-                            # ✨【超重要】エラーが起きたら、隠さずに真っ赤なボックスで画面に出す
-                            st.error(f"🚨【解析大元のエラー】商品名「{title}」の処理中にクラッシュしました。\nエラー内容: {main_error}")
-
+                            st.error(f"🚨【解析大元のエラー】エラー内容: {main_error}")
 # 6. 直近1ヶ月の評価数
                     rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
                     if rating_res.status_code == 200:
