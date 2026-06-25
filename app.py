@@ -76,7 +76,7 @@ else:
 max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=10, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
-# 🌟 フィルターエリア
+# フィルターエリア
 st.sidebar.markdown('---')
 st.sidebar.header("📊 表示データの絞り込み")
 
@@ -84,7 +84,7 @@ st.sidebar.header("📊 表示データの絞り込み")
 past_limit_date = datetime.strptime("2000-01-01", "%Y-%m-%d").date()
 future_limit_date = datetime.strptime("2030-12-31", "%Y-%m-%d").date()
 
-# ✨ 1. 価格（一番上に追加）
+# 1. 価格
 st.sidebar.markdown("**価格(円)**")
 col_price1, col_price_tilde, col_price2 = st.sidebar.columns([4, 1, 4])
 with col_price1:
@@ -180,9 +180,14 @@ def convert_df_to_excel(df):
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                 else:
                     cell.font = data_font
-                    if cell.column in [1, 4, 6, 7]: 
+                    # Excel内でURLをクリック可能にするためのHYPERLINK設定
+                    if cell.column == 5 and cell.value and str(cell.value).startswith("http"):
+                        cell.hyperlink = cell.value
+                        cell.font = Font(name="Meiryo", size=10, color="0563C1", underline="single")
+                    
+                    if cell.column in [1, 4, 6]: 
                         cell.alignment = Alignment(horizontal="right", vertical="center")
-                    elif cell.column in [8, 9, 10, 11, 12, 13]: 
+                    elif cell.column in [7, 8, 9, 10, 11, 12, 13]: 
                         cell.alignment = Alignment(horizontal="center", vertical="center")
                     else: 
                         cell.alignment = Alignment(horizontal="left", vertical="center")
@@ -203,7 +208,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
     price = item_data["price"]
     
     favorite = 0
-    purchase_count = 0
+    purchase_display = "0人"
     review = 0
     recent_review_display = "0件"
     first_review_date = "データなし"
@@ -219,16 +224,28 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         if desc_tag:
             description_text = desc_tag.text.strip()
             
-        fav_tag = soup.select_one(".p-item-detail-body__action-favorite-count, .c-favorite-btn__count")
+        # ✨ お気に入り数の新ロジック修正
+        fav_tag = soup.select_one(".js-like-item-number")
         if fav_tag:
             fav_text = re.sub(r"\D", "", fav_tag.text)
             favorite = int(fav_text) if fav_text else 0
+            
+        # ✨ 購入者数の新ロジック修正
+        buy_tag = soup.select_one(".p-item-detail-info__item--left, .p-item-detail-info__item")
+        if buy_tag and ("購入" in buy_tag.text):
+            purchase_display = buy_tag.text.replace("\n", "").strip()
+        else:
+            # 別のクラス名や構造の予備チェック
+            all_info_items = soup.select(".p-item-detail-info__item")
+            for item in all_info_items:
+                if "購入" in item.text:
+                    purchase_display = item.text.replace("\n", "").strip()
+                    break
             
         rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
         if rating_link_tag:
             review_text = rating_link_tag.text.strip()
             review = int(re.sub(r"\D", "", review_text)) if re.sub(r"\D", "", review_text) else 0
-            purchase_count = review
             
             try:
                 href_attr = rating_link_tag["href"]
@@ -267,7 +284,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     time.sleep(0.1)
                 
                 all_found_dates.sort(reverse=True)
-                if all_found_dates:
+                if Paradox := all_found_dates:
                     for idx, d_obj in enumerate(all_found_dates[:3]):
                         recent_sales[idx] = d_obj.strftime("%Y.%m.%d")
             except:
@@ -320,7 +337,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
         return {
             "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
-            "お気に入り数": favorite, "購入者数": purchase_count,  
+            "お気に入り数": favorite, "購入者数": purchase_display,  
             "直近販売日1": recent_sales[0], "直近販売日2": recent_sales[1], "直近販売日3": recent_sales[2],
             "総評価数": review, "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
             "作品紹介文": description_text 
@@ -449,8 +466,14 @@ if st.session_state.raw_data is not None:
     
     # 数値変換の安全処理
     raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors='coerce').fillna(0).astype(int)
-    raw_df["購入者数"] = pd.to_numeric(raw_df["購入者数"], errors='coerce').fillna(0).astype(int)
     raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').fillna(0).astype(int)
+
+    # ✨ 購入者数の数値化（フィルタリング用）
+    def parse_buyer_count(val):
+        if not isinstance(val, str): return 0
+        if "10人以上" in val: return 10
+        match = re.search(r"(\d+)", val)
+        return int(match.group(1)) if match else 0
 
     # 日付フィルタ処理のための関数
     def parse_to_date(val):
@@ -465,21 +488,24 @@ if st.session_state.raw_data is not None:
     is_min_date3_default = (min_date3 == past_limit_date)
 
     def filter_row(row):
-        # ✨ 1. 価格のチェック
+        # 1. 価格のチェック
         if not (min_price <= row["価格(円)"] <= max_price): return False
 
-        # 2. 購入者数と総評価数のチェック
-        if not (min_buy <= row["購入者数"] <= max_buy): return False
+        # 2. 購入者数のチェック（新ロジック対応）
+        buyer_num = parse_buyer_count(row["購入者数"])
+        if not (min_buy <= buyer_num <= max_buy): return False
+        
+        # 3. 総評価数のチェック
         if not (min_rev <= row["総評価数"] <= max_rev): return False
         
-        # 3. 直近販売日1のチェック
+        # 4. 直近販売日1のチェック
         d1 = parse_to_date(row["直近販売日1"])
         if d1:
             if not (min_date1 <= d1 <= max_date1): return False
         else:
             if not is_min_date1_default: return False
             
-        # 4. 直近販売日3のチェック
+        # 5. 直近販売日3のチェック
         d3 = parse_to_date(row["直近販売日3"])
         if d3:
             if not (min_date3 <= d3 <= max_date3): return False
@@ -496,7 +522,16 @@ if st.session_state.raw_data is not None:
         filtered_df["No."] = range(1, len(filtered_df) + 1)
         
     st.markdown(f"**現在の表示件数:** {len(filtered_df)} 件 / 全体 {len(raw_df)} 件")
-    st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+    
+    # 🌟 画面表示のテーブルで商品URLをクリック可能なリンクにする設定
+    st.dataframe(
+        filtered_df, 
+        use_container_width=True, 
+        hide_index=True,
+        column_config={
+            "商品URL": st.column_config.LinkColumn("商品URL", display_text="リンクを開く")
+        }
+    )
     
     excel_data = convert_df_to_excel(filtered_df)
     st.download_button(
