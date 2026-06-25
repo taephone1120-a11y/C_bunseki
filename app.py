@@ -282,7 +282,6 @@ def scrape_creema_fast(start_url, max_num):
             "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
             "お気に入り数": favorite, "購入者数": purchase_count,  
             "直近販売日1": recent_sales[0],
-            "直近販売日2": recent_sales[1],  # ※キー名は元の設定に合わせて調整してください
             "直近販売日2": recent_sales[1],
             "直近販売日3": recent_sales[2],
             "総評価数": review, "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
