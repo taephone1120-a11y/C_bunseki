@@ -206,11 +206,27 @@ def scrape_creema_fast(start_url, max_num):
                                     if not blocks: break
                                     
                                     for block in blocks:
-                                        found_in_this_block = False
+                                        # ✨ このレビューブロックで、すでに日付を回収したかを記録するフラグ
+                                        has_saved_date = False
+                                        
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         for t in title_tags:
-                                            if " ".join(t.text.strip().split()) == clean_target:
-                                                found_in_this_block = True
+                                            review_title = "".join(t.text.strip().split())
+                                            if clean_target in review_title or review_title in "".join(title.strip().split()):
+                                                # 🛑 まだこのブロックから日付を取っていなければ1回だけ回収する
+                                                if not has_saved_date:
+                                                    voice_tag = block.select_one(".p-creator-rating-rating__voice")
+                                                    if voice_tag:
+                                                        date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
+                                                        if date_tag:
+                                                            date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+                                                            if date_match:
+                                                                review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+                                                                if review_date >= local_three_months_ago:
+                                                                    all_matched_dates.append(review_date)
+                                                                    # 回収したのでフラグを立てる
+                                                                    has_saved_date = True
+                                                # ヒットした時点でこの商品のaタグのループは抜ける
                                                 break
                                         
                                         # 1つのレビューの塊（block）からは、絶対に1回しか日付を回収しない
