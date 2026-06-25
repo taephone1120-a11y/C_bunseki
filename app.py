@@ -181,15 +181,13 @@ def scrape_creema_fast(start_url, max_num):
                             if matches: review = matches.group(1)
                         except: pass
 
-# 5. 評価ページの解析（強制リセット＆完全防衛版）
+# 5. 評価ページの解析（原因究明デバッグ版）
                     if rating_link_tag:
                         try:
-                            # 1. ベースとなるURLの整形
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
                             if "?" in base_rating_url:
                                 base_rating_url = base_rating_url.split("?")[0]
                             
-                            # 関数内で日付を自給自足
                             local_three_months_ago = datetime.now() - timedelta(days=90)
                             
                             all_matched_dates = []
@@ -197,16 +195,25 @@ def scrape_creema_fast(start_url, max_num):
                             current_url = base_rating_url
                             clean_target = " ".join(title.strip().split())
                             
-                            # 2. ページめくりループ（最大10ページ）
+                            # 💡 画面に変数の初期状態を出力
+                            st.write(f"🔍【デバッグ】解析開始: {title}")
+                            st.write(f"🔍【デバッグ】ターゲットURL: {base_rating_url}")
+                            st.write(f"🔍【デバッグ】3ヶ月前の基準日: {local_three_months_ago.strftime('%Y.%m.%d')}")
+                            
                             while current_url and current_page <= 10:  
                                 try:
                                     res = requests.get(current_url, headers=headers, timeout=8)
-                                    if res.status_code != 200: break
+                                    if res.status_code != 200: 
+                                        st.write(f"⚠️【デバッグ】ページ {current_page} でステータスエラー: {res.status_code}")
+                                        break
                                     
                                     soup = BeautifulSoup(res.content, "html.parser")
                                     blocks = soup.select(".p-creator-rating-rating__content")
-                                    if not blocks: break
+                                    if not blocks: 
+                                        st.write(f"⚠️【デバッグ】ページ {current_page} にレビューブロックがありません")
+                                        break
                                     
+                                    page_hits = 0
                                     for block in blocks:
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         is_target = False
@@ -225,30 +232,38 @@ def scrape_creema_fast(start_url, max_num):
                                                         review_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
                                                         if review_date >= local_three_months_ago:
                                                             all_matched_dates.append(review_date)
+                                                            page_hits += 1
                                                             
+                                    st.write(f"📄【デバッグ】ページ {current_page} をスキャン終了。このページでの一致件数: {page_hits}件")
+                                    
                                     if len(all_matched_dates) >= 3:
+                                        st.write(f"🚨【デバッグ】1ページ目で3件以上見つかったので終了します（合計: {len(all_matched_dates)}件）")
                                         break
                                     
-                                    # ブレーキ機能
+                                    # ブレーキ機能のログ
                                     all_page_dates = []
                                     for v_tag in soup.select(".p-creator-rating-rating__voice"):
                                         d_tag = v_tag.select_one(".p-creator-rating-rating__date")
                                         if d_tag:
                                             d_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", d_tag.text)
                                             if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
-                                    if all_page_dates and max(all_page_dates) < local_three_months_ago: break
+                                    
+                                    if all_page_dates and max(all_page_dates) < local_three_months_ago: 
+                                        st.write(f"🛑【デバッグ】ページ内の最新レビュー({max(all_page_dates).strftime('%Y.%m.%d')})が3ヶ月以上前なので、ブレーキをかけてループを抜けます")
+                                        break
                                     
                                     current_page += 1
                                     current_url = f"{base_rating_url}?page={current_page}"
                                     time.sleep(0.1)
-                                except:
+                                except Exception as e:
+                                    st.write(f"❌【デバッグ】ループ内で例外発生: {e}")
                                     break
                             
-                            # 3. 回収した日付を新しい順にソートして抽出
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
-                            # 4. 🔥【絶対防衛】他の処理で上書きされないよう、ここで厳密に決定する
+                            st.write(f"📦【デバッグ】ソート後のデータトップ3: {sorted_dates}")
+                            
                             final_sales_list = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
                             total_found = len(sorted_dates)
                             
@@ -259,10 +274,11 @@ def scrape_creema_fast(start_url, max_num):
                                 if total_found >= 2: final_sales_list[1] = sorted_dates[1]
                                 if total_found >= 3: final_sales_list[2] = sorted_dates[2]
                             
-                            # ⚠️ 外部で使い回されている可能性のある変数を、ここで完全に上書きリセットする
+                            st.write(f"📢【デバッグ】最終的に recent_sales に代入する直前の値: {final_sales_list}")
                             recent_sales = final_sales_list
                                         
-                        except: pass
+                        except Exception as e: 
+                            st.write(f"❌【デバッグ】全体でエラー発生: {e}")
 
 # 6. 直近1ヶ月の評価数
                     rating_res = requests.get(base_rating_url, headers=headers, timeout=10)
