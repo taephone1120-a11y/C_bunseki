@@ -181,10 +181,14 @@ def scrape_creema_fast(start_url, max_num):
                             if matches: review = matches.group(1)
                         except: pass
 
-# 5. 評価ページの解析（最新順ソート・完全修正版）
+# 5. 評価ページの解析（最新順ソート・2ページ目URL修正版）
                     if rating_link_tag:
                         try:
                             base_rating_url = "https://www.creema.jp" + rating_link_tag["href"]
+                            
+                            # URLから既存の「?page=X」などの不要なパラメーターを一旦きれいに削る
+                            if "?" in base_rating_url:
+                                base_rating_url = base_rating_url.split("?")[0]
                             
                             all_matched_dates = []
                             current_page = 1
@@ -201,7 +205,7 @@ def scrape_creema_fast(start_url, max_num):
                                     blocks = soup.select(".p-creator-rating-rating__content")
                                     if not blocks: break
                                     
-                                    # 上手くいくコードと全く同じ、純粋な回収ループ
+                                    # 回収ループ
                                     for block in blocks:
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         is_target = False
@@ -222,7 +226,7 @@ def scrape_creema_fast(start_url, max_num):
                                                         if review_date >= three_months_ago:
                                                             all_matched_dates.append(review_date)
                                                             
-                                    # ✨【修正】1ページ目のレビューを「全部見終わった後」で、3つ以上あるか判定する
+                                    # 1ページ目のレビューを全部見終わった後で、3つ以上あるか判定する
                                     if current_page == 1 and len(all_matched_dates) >= 3:
                                         break
                                     
@@ -235,8 +239,9 @@ def scrape_creema_fast(start_url, max_num):
                                             if d_match: all_page_dates.append(datetime.strptime(d_match.group(1), "%Y.%m.%d"))
                                     if all_page_dates and max(all_page_dates) < three_months_ago: break
                                     
+                                    # ✨【URL修正ポイント】確実に「base_url?page=X」の形を作成する
                                     current_page += 1
-                                    current_url = f"{base_rating_url}&page={current_page}" if "?" in base_rating_url else f"{base_rating_url}?page={current_page}"
+                                    current_url = f"{base_rating_url}?page={current_page}"
                                     time.sleep(0.1)
                                 except:
                                     break
@@ -245,16 +250,13 @@ def scrape_creema_fast(start_url, max_num):
                             all_matched_dates.sort(reverse=True)
                             sorted_dates = [d.strftime("%Y.%m.%d") for d in all_matched_dates[:3]]
                             
-                            # ✨【修正】条件の判定を正しいロジックに修正
+                            # 条件の判定
                             recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
                             total_found = len(sorted_dates)
                             
-                            # 5ページ目まで到達、かつブレーキにもかからず、3ヶ月以内データが「本当に0件」だった場合のみ取得失敗
                             if total_found == 0 and current_page > 5:
                                 recent_sales = ["取得失敗", "取得失敗", "取得失敗"]
                             else:
-                                # 1件でも見つかっている場合、または3ヶ月前ブレーキで終わった場合は、
-                                # 見つかった分だけ日付を入れ、残りの枠は初期値の「3ヶ月以上前」のままにする
                                 if total_found >= 1:
                                     recent_sales[0] = sorted_dates[0]
                                 if total_found >= 2:
