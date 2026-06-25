@@ -180,7 +180,9 @@ def scrape_creema_fast(start_url, max_num):
                             matches = re.search(r"（(\d+)件）", rating_link_tag.text)
                             if matches: review = matches.group(1)
                         except: pass
-
+                            
+# 🛠️ いまある「if rating_link_tag:」の【すぐ上】にこれを追加
+st.warning(f"🔎【ルート判定】商品名: {title} / リンクの中身: {rating_link_tag}")
 # 5. 評価ページの解析（エラー強制可視化版）
                     if rating_link_tag:
                         try:
