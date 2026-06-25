@@ -344,7 +344,11 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         review_item_id = review_item_id_match.group(1) if review_item_id_match else None
 
                     # 商品名も取得しておく
-                    review_item_name = "".join(item_name_tag.get_text(strip=True).split())
+                    review_item_name = item_name_tag.get_text(strip=True)
+
+                    # 比較用に商品名を正規化する
+                    normalized_target_name = normalize_item_name(title)
+                    normalized_review_name = normalize_item_name(review_item_name)
 
                     # 商品IDで一致しているか
                     is_same_by_id = (
@@ -355,12 +359,23 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                     # 商品名で一致しているか
                     is_same_by_name = (
-                        target_name in review_item_name
-                        or review_item_name in target_name
+                        normalized_target_name in normalized_review_name
+                        or normalized_review_name in normalized_target_name
                     )
 
-                    # IDか商品名、どちらか一致すれば対象商品とする
-                    is_same_item = is_same_by_id or is_same_by_name
+                    # 商品名を語句に分解して、共通語句が多ければ同じ商品とみなす
+                    target_words = re.findall(r"[一-龥ぁ-んァ-ヶA-Za-z0-9]+", title)
+                    review_words = re.findall(r"[一-龥ぁ-んァ-ヶA-Za-z0-9]+", review_item_name)
+
+                    target_words = [w for w in target_words if len(w) >= 3]
+                    review_words = [w for w in review_words if len(w) >= 3]
+
+                    common_words = set(target_words) & set(review_words)
+
+                    is_same_by_words = len(common_words) >= 2
+
+                    # ID・商品名・共通語句のどれかで一致すれば対象商品とする
+                    is_same_item = is_same_by_id or is_same_by_name or is_same_by_words
 
                     # ラブラドライトだけ確認ログを出す
                     if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
@@ -376,14 +391,17 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                     if not is_same_item:
                         if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
-                            debug_logs.append(
-                                "対象外判定: "
-                                f"page={current_page} / "
-                                f"対象ID={target_item_id} / "
-                                f"レビューID={review_item_id} / "
-                                f"対象名={target_name[:80]} / "
-                                f"レビュー名={review_item_name[:80]}"
-                            )
+                        debug_logs.append(
+                            "対象外判定: "
+                            f"page={current_page} / "
+                            f"対象ID={target_item_id} / "
+                            f"レビューID={review_item_id} / "
+                            f"ID一致={is_same_by_id} / "
+                            f"名前一致={is_same_by_name} / "
+                            f"語句一致={is_same_by_words} / "
+                            f"対象名={title[:80]} / "
+                            f"レビュー名={review_item_name[:80]}"
+                        )
                         continue
 
                     print("【一致】対象商品として処理")
