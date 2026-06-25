@@ -211,16 +211,15 @@ def scrape_creema_fast(start_url, max_num):
                                         
                                         title_tags = block.select(".p-creator-rating-rating__title a")
                                         for t in title_tags:
-                                            # 🧹 レビュー側の名前から改行や全半角スペースを完全に消し去る
-                                            raw_review = t.text if t.text else ""
-                                            review_title = re.sub(r"[\s\n\r\t ]", "", raw_review.strip())
+                                            # レビュー側リンクのURL（例: /item/15234296/detail）
+                                            review_href = t.get("href", "")
                                             
-                                            # 🧹 一覧ページ側の名前からも末尾の「...」を消し、スペースを完全排除
-                                            clean_origin = title.strip().rstrip(".…")
-                                            origin_title = re.sub(r"[\s\n\r\t ]", "", clean_origin)
+                                            # 🔍 双方のURLから「商品ID（数字の塊）」を抜き出す
+                                            match_review_id = re.search(r"/item/(\d+)", review_href)
+                                            match_origin_id = re.search(r"/item/(\d+)", link) # linkは詳細解析関数の最初で定義されている元のURL
                                             
-                                            # 🤝 【超強力・部分一致判定】
-                                            if origin_title in review_title or review_title in origin_title:
+                                            # 🤝 商品IDが完全に一致したら、同一商品とみなす！
+                                            if match_review_id and match_origin_id and match_review_id.group(1) == match_origin_id.group(1):
                                                 if not has_saved_date:
                                                     voice_tag = block.select_one(".p-creator-rating-rating__voice")
                                                     if voice_tag:
