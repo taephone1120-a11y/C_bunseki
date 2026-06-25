@@ -315,20 +315,38 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         review_item_id_match = re.search(r"/item/(\d+)", block_html)
                         review_item_id = review_item_id_match.group(1) if review_item_id_match else None
 
-                    # 商品IDで一致判定。IDが取れない場合だけ商品名で判定
-                    if target_item_id and review_item_id:
-                        is_same_item = target_item_id == review_item_id
-                    else:
-                        review_item_name = "".join(item_name_tag.get_text(strip=True).split())
-                        is_same_item = target_name in review_item_name or review_item_name in target_name
+                    # 商品名も取得しておく
+                    review_item_name = "".join(item_name_tag.get_text(strip=True).split())
 
-                    if not is_same_item:
-                        print("【スキップ】対象商品ではないと判断")
+                    # 商品IDで一致しているか
+                    is_same_by_id = (
+                        target_item_id
+                        and review_item_id
+                        and target_item_id == review_item_id
+                    )
+
+                    # 商品名で一致しているか
+                    is_same_by_name = (
+                        target_name in review_item_name
+                        or review_item_name in target_name
+                    )
+
+                    # IDか商品名、どちらか一致すれば対象商品とする
+                    is_same_item = is_same_by_id or is_same_by_name
+
+                    # ラブラドライトだけ確認ログを出す
+                    if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
+                        print("【ラブラドライト判定チェック】")
+                        print("is_same_by_id:", is_same_by_id)
+                        print("is_same_by_name:", is_same_by_name)
+                        print("is_same_item:", is_same_item)
                         print("対象ID:", target_item_id)
                         print("レビューID:", review_item_id)
-                        print("対象商品名:", target_name[:80])
-                        print("レビュー商品名:", review_item_name[:80])
+                        print("対象商品名:", target_name[:120])
+                        print("レビュー商品名:", review_item_name[:120])
                         print("-" * 50)
+
+                    if not is_same_item:
                         continue
 
                     print("【一致】対象商品として処理")
