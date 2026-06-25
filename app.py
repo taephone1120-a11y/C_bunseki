@@ -252,14 +252,17 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             target_name = "".join(title.split())
 
             # 商品URLから商品IDを取得
-            target_item_id_match = re.search(r"/item/(\d+)/", link)
+            target_item_id_match = re.search(r"/item/(\d+)", link)
             target_item_id = target_item_id_match.group(1) if target_item_id_match else None
 
             # --- 探索ログ追加 ---
             print(f"[{title[:15]}...] レビュー探索開始")
 
             for current_page in range(1, 6):  # 5ページまで探索
-                r_res = requests.get(f"{base_rating_url}?page={current_page}", headers=headers, timeout=10)
+                page_url = f"{base_rating_url}?page={current_page}"
+                print(f" - 取得URL: {page_url}")
+
+                r_res = requests.get(page_url, headers=headers, timeout=10)
                 if r_res.status_code != 200:
                     break
 
@@ -273,9 +276,12 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     blocks = r_soup.select(".p-creator-rating-rating__content")
 
                 if not blocks:
-                    break
+　　　　　　　　　　    print(f" - {current_page}ページ目: レビューブロックが0件のため終了")
+    　　　　　　　　　　　break
 
-                found_in_page = 0
+　　　　　　　　　　　　print(f" - {current_page}ページ目: レビューブロック {len(blocks)}件")
+
+　　　　　　　　　　　　found_in_page = 0
 
                 for block in blocks:
                     # レビュー内の商品リンクを取得
@@ -291,7 +297,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     review_href = item_name_tag.get("href", "")
 
                     # レビュー側の商品IDを取得
-                    review_item_id_match = re.search(r"/item/(\d+)/", review_href)
+                    review_item_id_match = re.search(r"/item/(\d+)", review_href)
                     review_item_id = review_item_id_match.group(1) if review_item_id_match else None
 
                     # 商品IDで一致判定。IDが取れない場合だけ商品名で判定
