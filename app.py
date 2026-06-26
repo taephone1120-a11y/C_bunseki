@@ -228,8 +228,6 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         # =========================
         # 作品紹介文取得
         # =========================
-        # Creemaの商品説明は、商品によってclassが違うことがあるため、
-        # 複数パターンで探す。
         desc_tag = soup.select_one(
             "#introduction .p-item-detail-description, "
             ".p-item-detail-description.js-internal-link, "
@@ -238,10 +236,9 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         )
 
         if desc_tag:
-            # <a href="...">URL</a> は、表示テキストを残す。
-            # 表示テキストが空の場合だけhrefを残す。
+            # <a href="...">URL</a> は表示テキストを残す
             for a in desc_tag.find_all("a"):
-                text = a.get_text(strip=False)
+                text = a.get_text(strip=True)
                 href = a.get("href", "")
 
                 if href and href.startswith("/"):
@@ -254,25 +251,35 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                 else:
                     a.decompose()
 
-            # <br> を改行として扱う
+            # <br> を改行に変換
             for br in desc_tag.find_all("br"):
                 br.replace_with("\n")
 
-            # HTMLの余計なタグは外しつつ、br由来の改行は残す
+            # separator="" にするとHTML由来の余計な空白を拾いにくい
             description_text = desc_tag.get_text(separator="", strip=False)
 
-            # Windows系の改行を統一
+            # 改行コードを統一
             description_text = description_text.replace("\r\n", "\n").replace("\r", "\n")
 
-            # 各行の前後スペースだけ削除。空行は残す。
+            # 各行の前後スペースを削除
             lines = [line.strip() for line in description_text.split("\n")]
-            description_text = "\n".join(lines)
 
-            # 先頭・末尾の空行だけ削除
-            description_text = description_text.strip()
+            cleaned_lines = []
+            blank_count = 0
 
-            # 空行が多すぎる場合だけ、最大2行までに整理
-            description_text = re.sub(r"\n{4,}", "\n\n\n", description_text)
+            for line in lines:
+                if line == "":
+                    blank_count += 1
+
+                    # 空行は最大1行だけ残す
+                    if blank_count <= 1:
+                        cleaned_lines.append("")
+                else:
+                    blank_count = 0
+                    cleaned_lines.append(line)
+
+            description_text = "\n".join(cleaned_lines).strip()
+
         else:
             description_text = "取得失敗"
 
