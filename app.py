@@ -313,49 +313,49 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                 found_in_page = 0
 
-clean_target = " ".join(title.strip().split())
+　　　　　clean_target = " ".join(title.strip().split())
 
-for block in blocks:
-    title_tags = block.select(".p-creator-rating-rating__title a, .p-creator-rating-list__item-title a")
+　　　　　for block in blocks:
+    　　　　　title_tags = block.select(".p-creator-rating-rating__title a, .p-creator-rating-list__item-title a")
 
-    is_target = False
-    review_item_name = ""
+    　　　　　is_target = False
+    　　　　　review_item_name = ""
 
-    for t in title_tags:
-        candidate_name = " ".join(t.text.strip().split())
+   　　　　　 for t in title_tags:
+        　　　　　candidate_name = " ".join(t.text.strip().split())
 
-        if candidate_name == clean_target:
-            is_target = True
-            review_item_name = candidate_name
-            break
+     　　　　　   if candidate_name == clean_target:
+        　　　　　    is_target = True
+        　　　　　    review_item_name = candidate_name
+        　　　　　    break
 
-    if not is_target:
-        continue
+   　　　　　 if not is_target:
+   　　　　　     continue
 
-    voice_tag = block.select_one(".p-creator-rating-rating__voice")
-    if voice_tag:
-        date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
-    else:
-        date_tag = block.select_one(".p-creator-rating-rating__date, .p-creator-rating-list__item-date")
+  　　　　　  voice_tag = block.select_one(".p-creator-rating-rating__voice")
+ 　　　　　   if voice_tag:
+  　　　　　      date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
+  　　　　　  else:
+  　　　　　      date_tag = block.select_one(".p-creator-rating-rating__date, .p-creator-rating-list__item-date")
 
-    if not date_tag:
-        continue
+  　　　　　  if not date_tag:
+  　　　　　      continue
 
-    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-    if not date_match:
-        continue
+ 　　　　　   date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
+  　　　　　  if not date_match:
+   　　　　　     continue
 
-    found_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
+  　　　　　  found_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
 
-    review_text = block.get_text(" ", strip=True)
-    review_key = f"{review_item_name}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
+  　　　　　  review_text = block.get_text(" ", strip=True)
+  　　　　　  review_key = f"{review_item_name}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
 
-    if review_key in seen_review_keys:
-        continue
+   　　　　　 if review_key in seen_review_keys:
+   　　　　　     continue
 
-    seen_review_keys.add(review_key)
-    all_found_dates.append(found_date)
-    found_in_page += 1
+  　　　　　  seen_review_keys.add(review_key)
+  　　　　　  all_found_dates.append(found_date)
+  　　　　　  found_in_page += 1
                     # レビュー内の商品名リンクを優先して取得
                     item_name_tag = block.select_one(
                         '.p-creator-rating-rating__title a[href*="/item/"], '
