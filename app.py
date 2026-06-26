@@ -911,7 +911,7 @@ if st.session_state.raw_data is not None:
             ),
             "作品紹介文": st.column_config.TextColumn(
                 "作品紹介文",
-                width="large"
+                width="small"
             ),
             "直近1ヶ月の評価数": st.column_config.TextColumn(
                 "直近1ヶ月の評価数",
