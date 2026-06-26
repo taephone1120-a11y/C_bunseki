@@ -846,6 +846,8 @@ if start_button:
             st.session_state.raw_data = res_dict["items"]
             st.session_state.market_total = res_dict["market_total"]
             st.success(f"🎉 リサーチ完了！ 全 {len(res_dict['items'])} 件のデータを取得しました。")
+            st.write("取得データ確認:", len(st.session_state.raw_data))
+            st.dataframe(pd.DataFrame(st.session_state.raw_data))
         else:
             st.error("❌ データが取得できませんでした。")
 
