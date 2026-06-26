@@ -134,6 +134,25 @@ with col_rev_tilde:
     st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
 with col_rev2:
     max_rev = st.number_input("作家の総評価数（最大）", min_value=0, value=99999, label_visibility="collapsed")
+# 6. 直近1ヶ月の評価数
+st.sidebar.markdown("**直近1ヶ月の評価数**")
+col_recent1, col_recent_tilde, col_recent2 = st.sidebar.columns([4, 1, 4])
+with col_recent1:
+    min_recent_review = st.number_input(
+        "直近1ヶ月の評価数（最小）",
+        min_value=0,
+        value=0,
+        label_visibility="collapsed"
+    )
+with col_recent_tilde:
+    st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
+with col_recent2:
+    max_recent_review = st.number_input(
+        "直近1ヶ月の評価数（最大）",
+        min_value=0,
+        value=99999,
+        label_visibility="collapsed"
+    )
 
 # =============================================
 #   📲 LINE通知関数
@@ -820,6 +839,14 @@ if st.session_state.raw_data is not None:
         match = re.search(r"(\d+)", val)
         return int(match.group(1)) if match else 0
 
+    # 「直近1ヶ月の評価数」の数値化
+# 例：「3件」→ 3、「0件」→ 0
+def parse_recent_review_count(val):
+    if not isinstance(val, str):
+        return 0
+    match = re.search(r"(\d+)", val)
+    return int(match.group(1)) if match else 0
+
     # 日付フィルタ処理のための関数
     def parse_to_date(val):
         if not isinstance(val, str):
@@ -846,6 +873,11 @@ if st.session_state.raw_data is not None:
         # 3. 作家の総評価数のチェック
         if not (min_rev <= row["作家の総評価数"] <= max_rev):
             return False
+
+        # 4. 直近1ヶ月の評価数のチェック
+　　　　　recent_review_num = parse_recent_review_count(row.get("直近1ヶ月の評価数", "0件"))
+　　　　　if not (min_recent_review <= recent_review_num <= max_recent_review):
+    　　　　　return False
         
         # 4. 評価日1のチェック
         d1 = parse_to_date(row.get("評価日1", "ー"))
