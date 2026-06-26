@@ -655,7 +655,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             "作家名": creator,
             "商品名": title,
             "価格(円)": price,
-            "作品紹介文": description_text
+            "作品紹介文": description_text,
             "直近1ヶ月の評価数": recent_review_display,
             "作家の総評価数": review,
             "お気に入り数": favorite,
