@@ -701,15 +701,20 @@ def scrape_creema_fast(start_url, max_num):
     today = datetime.now()
     one_month_ago = today - timedelta(days=30)
     
-all_item_elements_data = []
-seen_urls = set()  # 取得済みURLの重複チェック用
+    all_item_elements_data = []
+    seen_urls = set()  # 取得済みURLの重複チェック用
 
-current_url = start_url
-page_count = 1
-detected_market_total = 0 
-page_status = st.empty()
+    current_url = start_url
+    page_count = 1
+    detected_market_total = 0 
+    page_status = st.empty()
     
     while current_url and len(all_item_elements_data) < max_num:
+        page_status.info(
+            f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています "
+            f"(収集済リンク: {len(all_item_elements_data)}件)"
+        )
+        
         page_status.info(f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています (収集済リンク: {len(all_item_elements_data)}件)")
         try:
             response = requests.get(current_url, headers=headers, timeout=10)
