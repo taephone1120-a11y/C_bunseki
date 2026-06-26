@@ -152,6 +152,7 @@ def send_line_notification(keyword_or_url, item_count):
 # =============================================
 def convert_df_to_excel(df):
     export_df = df.copy()
+
     def remove_illegal_chars(val):
         if isinstance(val, str):
             cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", val)
@@ -162,73 +163,82 @@ def convert_df_to_excel(df):
         export_df[col] = export_df[col].apply(remove_illegal_chars)
 
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
         export_df.to_excel(writer, sheet_name="リサーチ結果", index=False)
         worksheet = writer.sheets["リサーチ結果"]
-        
+
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
         header_font = Font(name="Meiryo", size=11, bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
         data_font = Font(name="Meiryo", size=10)
-        thin_border = Border(left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'), top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9'))
-        
-        for row in worksheet.iter_rows(min_row=1, max_row=len(export_df)+1):
+        thin_border = Border(
+            left=Side(style="thin", color="D9D9D9"),
+            right=Side(style="thin", color="D9D9D9"),
+            top=Side(style="thin", color="D9D9D9"),
+            bottom=Side(style="thin", color="D9D9D9")
+        )
+
+        # セル装飾
+        for row in worksheet.iter_rows(min_row=1, max_row=len(export_df) + 1):
             for cell in row:
                 cell.border = thin_border
+
                 if cell.row == 1:
                     cell.font = header_font
                     cell.fill = header_fill
-                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                 else:
                     cell.font = data_font
+
+                    # 商品URL列をリンク化
                     if cell.column == 5 and cell.value and str(cell.value).startswith("http"):
                         cell.hyperlink = cell.value
                         cell.font = Font(name="Meiryo", size=10, color="0563C1", underline="single")
-                    
-                    if cell.column in [1, 4, 6]: 
+
+                    # 基本の配置
+                    if cell.column in [1, 4, 6]:
                         cell.alignment = Alignment(horizontal="right", vertical="center")
-                    elif cell.column in [7, 8, 9, 10, 11, 12, 13]: 
+                    elif cell.column in [7, 8, 9, 10, 11, 12, 13]:
                         cell.alignment = Alignment(horizontal="center", vertical="center")
-                    else: 
-                        cell.alignment = Alignment(horizontal="left", vertical="center")
-                        
-for col in worksheet.columns:
-    col_letter = col[0].column_letter
-    header_name = col[0].value
+                    else:
+                        cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
-    max_len = max(len(str(cell.value or '')) for cell in col)
+        # 列幅調整
+        for col in worksheet.columns:
+            col_letter = col[0].column_letter
+            header_name = col[0].value
+            max_len = max(len(str(cell.value or "")) for cell in col)
 
-    # 商品名だけ少し幅を狭める
-    if header_name == "商品名":
-        worksheet.column_dimensions[col_letter].width = 28
+            # 商品名は少しきゅっと狭める
+            if header_name == "商品名":
+                worksheet.column_dimensions[col_letter].width = 28
+                for cell in col:
+                    cell.alignment = Alignment(
+                        horizontal="left",
+                        vertical="top",
+                        wrap_text=True
+                    )
 
-        # 商品名は折り返して表示
-        for cell in col:
-            cell.alignment = Alignment(
-                horizontal="left",
-                vertical="top",
-                wrap_text=True
-            )
+            # 作品紹介文は広め＋折り返し
+            elif header_name == "作品紹介文":
+                worksheet.column_dimensions[col_letter].width = 45
+                for cell in col:
+                    cell.alignment = Alignment(
+                        horizontal="left",
+                        vertical="top",
+                        wrap_text=True
+                    )
 
-    # 作品紹介文は広めにする
-    elif header_name == "作品紹介文":
-        worksheet.column_dimensions[col_letter].width = 45
+            # 商品URLは短め
+            elif header_name == "商品URL":
+                worksheet.column_dimensions[col_letter].width = 18
 
-        for cell in col:
-            cell.alignment = Alignment(
-                horizontal="left",
-                vertical="top",
-                wrap_text=True
-            )
+            # その他の列
+            else:
+                worksheet.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 25)
 
-    # 商品URLは短め
-    elif header_name == "商品URL":
-        worksheet.column_dimensions[col_letter].width = 18
-
-    # その他の列は今まで通り自動調整
-    else:
-        worksheet.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 25)
-            
     return output.getvalue()
 
 # =============================================
