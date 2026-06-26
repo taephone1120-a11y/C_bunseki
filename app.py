@@ -714,11 +714,13 @@ def scrape_creema_fast(start_url, max_num):
             f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています "
             f"(収集済リンク: {len(all_item_elements_data)}件)"
         )
-        
-        page_status.info(f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています (収集済リンク: {len(all_item_elements_data)}件)")
+
         try:
             response = requests.get(current_url, headers=headers, timeout=10)
-            if response.status_code != 200: break
+
+            if response.status_code != 200:
+                break
+
             soup = BeautifulSoup(response.content, "html.parser")
             
             if page_count == 1:
@@ -729,44 +731,68 @@ def scrape_creema_fast(start_url, max_num):
                         detected_market_total = int(match_count.group(1).replace(",", ""))
             
             items = soup.select("article.c-item-article")
-            if not items: break
+
+            if not items:
+                break
                 
             for item in items:
-                if len(all_item_elements_data) >= max_num: break
+                if len(all_item_elements_data) >= max_num:
+                    break
+
                 title_tag = item.select_one('.c-item-article__name a[href*="/item/"]')
-                if not title_tag: continue
+
+                if not title_tag:
+                    continue
                     
                 title = title_tag.text.strip()
-link = "https://www.creema.jp" + title_tag["href"]
+                href = title_tag.get("href", "")
 
-# URLの重複を防ぐ
-if link in seen_urls:
-    continue
+                if not href:
+                    continue
 
-seen_urls.add(link)
+                if href.startswith("http"):
+                    link = href
+                else:
+                    link = "https://www.creema.jp" + href
 
-desc_tag = item.select_one(".c-item-article__desc")
-creator, price = "取得失敗", 0
-if desc_tag and "/" in desc_tag.text:
-    parts = desc_tag.text.split("/")
-    price = int(re.sub(r"\D", "", parts[0])) if parts[0] else 0
-    creator = parts[1].strip()
+                # URLの重複を防ぐ
+                if link in seen_urls:
+                    continue
 
-all_item_elements_data.append({
-    "link": link,
-    "creator": creator,
-    "title": title,
-    "price": price
-})
+                seen_urls.add(link)
+                
+                desc_tag = item.select_one(".c-item-article__desc")
+                creator, price = "取得失敗", 0
+
+                if desc_tag and "/" in desc_tag.text:
+                    parts = desc_tag.text.split("/")
+                    price = int(re.sub(r"\D", "", parts[0])) if parts[0] else 0
+                    creator = parts[1].strip()
+                
+                all_item_elements_data.append({
+                    "link": link,
+                    "creator": creator,
+                    "title": title,
+                    "price": price
+                })
             
             next_tag = soup.select_one("a.c-pagination__next")
+
             if next_tag and "href" in next_tag.attrs:
-                current_url = next_tag["href"] if next_tag["href"].startswith("http") else "https://www.creema.jp" + next_tag["href"]
+                next_href = next_tag["href"]
+
+                if next_href.startswith("http"):
+                    current_url = next_href
+                else:
+                    current_url = "https://www.creema.jp" + next_href
+
                 page_count += 1
                 time.sleep(0.3)
             else:
                 current_url = None
-        except:
+
+        except Exception as e:
+            print("一覧ページ取得エラー:", e)
             break
             
     page_status.empty()
