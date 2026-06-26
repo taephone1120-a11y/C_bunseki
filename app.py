@@ -238,27 +238,41 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         )
 
         if desc_tag:
-            # <br> を改行として扱う
-            for br in desc_tag.find_all("br"):
-                br.replace_with("\n")
-
-            # <a href="...">URL</a> のURL文字列も残す
+            # <a href="...">URL</a> は、表示テキストを残す。
+            # 表示テキストが空の場合だけhrefを残す。
             for a in desc_tag.find_all("a"):
+                text = a.get_text(strip=False)
                 href = a.get("href", "")
-                text = a.get_text(strip=True)
 
                 if href and href.startswith("/"):
                     href = "https://www.creema.jp" + href
 
-                if href and (not text or text != href):
+                if text:
+                    a.replace_with(text)
+                elif href:
                     a.replace_with(href)
                 else:
-                    a.replace_with(text)
+                    a.decompose()
 
-            description_text = desc_tag.get_text("\n", strip=True)
+            # <br> を改行として扱う
+            for br in desc_tag.find_all("br"):
+                br.replace_with("\n")
 
-            # 改行が多すぎる場合を整理
-            description_text = re.sub(r"\n{3,}", "\n\n", description_text)
+            # HTMLの余計なタグは外しつつ、br由来の改行は残す
+            description_text = desc_tag.get_text(separator="", strip=False)
+
+            # Windows系の改行を統一
+            description_text = description_text.replace("\r\n", "\n").replace("\r", "\n")
+
+            # 各行の前後スペースだけ削除。空行は残す。
+            lines = [line.strip() for line in description_text.split("\n")]
+            description_text = "\n".join(lines)
+
+            # 先頭・末尾の空行だけ削除
+            description_text = description_text.strip()
+
+            # 空行が多すぎる場合だけ、最大2行までに整理
+            description_text = re.sub(r"\n{4,}", "\n\n\n", description_text)
         else:
             description_text = "取得失敗"
 
