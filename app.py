@@ -208,7 +208,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
     
     favorite = 0
     purchase_display = "0人"
-    review = 0
+    review = 0  # ここには「クリエイター欄の総評価数」を入れる
     recent_review_display = "0件"
     first_review_date = "データなし"
     description_text = "取得失敗"
@@ -220,31 +220,71 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             return None
 
         soup = BeautifulSoup(res.content, "html.parser")
-
+        
+        # =========================
         # 作品説明取得
+        # =========================
         desc_tag = soup.select_one(".p-item-detail__description, .p-item-detail-body__description")
         if desc_tag:
             description_text = desc_tag.text.strip()
 
+        # =========================
+        # クリエイターの総評価数取得
+        # 例：
+        # <span class="p-item-detail-creator__rating-count">
+        #   （<a href="/creator/499034/rating/sale">2002</a>）
+        # </span>
+        # =========================
+        creator_rating_tag = soup.select_one(
+            "#js-creator-rating-average .p-item-detail-creator__rating-count a"
+        )
+
+        if creator_rating_tag:
+            rating_text = creator_rating_tag.get_text(strip=True)
+            rating_num = re.sub(r"\D", "", rating_text)
+            review = int(rating_num) if rating_num else 0
+        else:
+            # 念のため、aタグで取れなかった場合の保険
+            rating_count_area = soup.select_one(
+                "#js-creator-rating-average .p-item-detail-creator__rating-count"
+            )
+            if rating_count_area:
+                rating_text = rating_count_area.get_text(strip=True)
+                rating_num = re.sub(r"\D", "", rating_text)
+                review = int(rating_num) if rating_num else 0
+            
+        # =========================
         # お気に入り数取得
-        fav_btn = soup.find(lambda tag: tag.name in ["button", "a"] and "お気に入りに追加" in tag.text)
+        # =========================
+        fav_btn = soup.find(
+            lambda tag: tag.name in ["button", "a"] and "お気に入りに追加" in tag.text
+        )
+
         if fav_btn:
             num_part = fav_btn.select_one(".js-like-item-number, b, span")
             fav_text = re.sub(r"\D", "", num_part.text if num_part else fav_btn.text)
             favorite = int(fav_text) if fav_text else 0
-
+            
+        # =========================
         # 購入者数取得
+        # =========================
         buy_container = soup.select_one(".p-item-detail-info__item--left")
+
         if buy_container:
             text = buy_container.get_text(strip=True)
+
             if "10人以上購入" in text:
                 purchase_display = "10人以上"
             else:
                 match = re.search(r"(\d+)人購入", text)
                 if match:
                     purchase_display = f"{match.group(1)}人"
-
+        
+        # =========================
         # レビューページ解析
+        # ここでは「直近販売日1〜3」「直近1ヶ月の評価数」「一番初めの評価日」だけ取得する
+        # 総評価数 review は、上で取得したクリエイター欄の数字を使うので上書きしない
+        # =========================
         rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
 
         if rating_link_tag:
@@ -254,7 +294,10 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             if "?" in base_rating_url:
                 base_rating_url = base_rating_url.split("?")[0]
 
-            # 重要：リダイレクト後の正規URLを取得する
+            # /creator/数字/rating/sale のまま page=2 を付けると、
+            # Creema側で /c/ショップ名/rating/sale にリダイレクトされ、
+            # page=2 が消えることがある。
+            # そのため、先に正規URLへ変換しておく。
             try:
                 canonical_res = requests.get(base_rating_url, headers=headers, timeout=10)
                 if canonical_res.status_code == 200:
@@ -263,17 +306,18 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     canonical_rating_url = base_rating_url
             except:
                 canonical_rating_url = base_rating_url
-
+            
             all_found_dates = []
             seen_review_keys = set()
 
+            # 商品名だけで一致判定する
             target_name = "".join(title.split())
 
             print(f"[{title[:15]}...] レビュー探索開始")
             print("元の評価URL:", base_rating_url)
             print("正規評価URL:", canonical_rating_url)
 
-            for current_page in range(1, 6):
+            for current_page in range(1, 6):  # 5ページまで探索
                 page_url = f"{canonical_rating_url}?page={current_page}"
                 print(f" - 取得URL: {page_url}")
 
@@ -286,8 +330,10 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                 r_soup = BeautifulSoup(r_res.content, "html.parser")
 
+                # 外側のレビュー1件単位だけを優先して取得
                 blocks = r_soup.select(".p-creator-rating-list__item")
 
+                # もし上のセレクタで取れない場合だけ、旧セレクタを使う
                 if not blocks:
                     blocks = r_soup.select(".p-creator-rating-rating__content")
 
@@ -300,11 +346,13 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                 found_in_page = 0
 
                 for block in blocks:
+                    # レビュー内の商品名リンクを優先して取得
                     item_name_tag = block.select_one(
                         '.p-creator-rating-rating__title a[href*="/item/"], '
                         '.p-creator-rating-list__item-title a[href*="/item/"]'
                     )
 
+                    # 商品名リンクが取れない場合だけ、文字が入っている /item/ リンクを探す
                     if not item_name_tag:
                         item_links = block.select('a[href*="/item/"]')
                         for a in item_links:
@@ -316,6 +364,8 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         continue
 
                     review_href = item_name_tag.get("href", "")
+
+                    # 商品名で一致判定
                     review_item_name = "".join(item_name_tag.get_text(strip=True).split())
 
                     is_same_by_name = (
@@ -331,13 +381,15 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     print("レビュー商品名:", review_item_name[:80])
                     print("-" * 50)
 
+                    # 日付を取得
                     date_tag = block.select_one(
                         ".p-creator-rating-rating__date, "
                         ".p-creator-rating-list__item-date"
                     )
 
+                    # classで日付が取れない場合に備えて、本文全体からも探す
                     if date_tag:
-                        date_text = date_tag.text
+                        date_text = date_tag.get_text(" ", strip=True)
                     else:
                         date_text = block.get_text(" ", strip=True)
 
@@ -352,6 +404,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         int(d_match.group(3))
                     )
 
+                    # 同じレビューを二重取得しないためのキー
                     review_text = block.get_text(" ", strip=True)
                     review_key = f"{review_href}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
 
@@ -364,13 +417,16 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                 print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
                 time.sleep(0.2)
-
+            
             all_found_dates.sort(reverse=True)
 
             for i in range(min(3, len(all_found_dates))):
                 recent_sales[i] = all_found_dates[i].strftime("%Y.%m.%d")
-
-            review = len(all_found_dates)
+            
+            # 注意：
+            # 総評価数 review は、クリエイター欄から取得済み。
+            # ここで review = len(all_found_dates) は絶対にしない。
+            
             recent_month_count = sum(1 for d in all_found_dates if d >= one_month_ago)
             recent_review_display = f"{recent_month_count}件"
 
