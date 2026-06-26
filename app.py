@@ -877,22 +877,22 @@ if st.session_state.raw_data is not None:
     # =========================
     # 表示・Excel出力用に列順を整える
     # =========================
-preferred_columns = [
-    "No.",
-    "商品URL",
-    "作家名",
-    "商品名",
-    "価格(円)",
-    "作品紹介文",
-    "直近1ヶ月の評価数",
-    "作家の総評価数",
-    "購入者数",
-    "お気に入り数",
-    "評価日1",
-    "評価日2",
-    "評価日3",
-    "作家の一番初めの評価日",
-]
+    preferred_columns = [
+        "No.",
+        "商品URL",
+        "作家名",
+        "商品名",
+        "価格(円)",
+        "作品紹介文",
+        "直近1ヶ月の評価数",
+        "作家の総評価数",
+        "購入者数",
+        "お気に入り数",
+        "評価日1",
+        "評価日2",
+        "評価日3",
+        "作家の一番初めの評価日",
+    ]
 
     existing_columns = [col for col in preferred_columns if col in filtered_df.columns]
     other_columns = [col for col in filtered_df.columns if col not in existing_columns]
