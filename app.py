@@ -5,6 +5,7 @@ import random
 import requests
 import json
 import textwrap
+import math
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -430,9 +431,48 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             recent_month_count = sum(1 for d in all_found_dates if d >= one_month_ago)
             recent_review_display = f"{recent_month_count}件"
 
-            if all_found_dates:
-                first_review_date = min(all_found_dates).strftime("%Y.%m.%d")
+            # =========================
+            # 一番初めの評価日を取得
+            # =========================
+            # 今まで：
+            # 対象商品のレビューの中で一番古い日付を使っていた
+            #
+            # 変更後：
+            # クリエイターの総評価数から最終ページを計算し、
+            # 最終ページ内の日付の中で一番古い日付を使う
+            #
+            # 例：
+            # 総評価数6562 ÷ 20件 = 328.1 → 329ページ目
+            # =========================
+            try:
+                if review > 0:
+                    last_page = math.ceil(review / 20)
 
+                    last_page_url = f"{canonical_rating_url}?page={last_page}"
+                    print("一番初めの評価日チェックURL:", last_page_url)
+
+                    last_res = requests.get(last_page_url, headers=headers, timeout=10)
+                    print("一番初めの評価日チェック 最終URL:", last_res.url)
+
+                    if last_res.status_code == 200:
+                        last_soup = BeautifulSoup(last_res.content, "html.parser")
+                        last_page_text = last_soup.get_text(" ", strip=True)
+
+                        date_matches = re.findall(
+                            r"\(\s*(\d{4}\.\d{2}\.\d{2})\s*\)",
+                            last_page_text
+                        )
+
+                        if date_matches:
+                            oldest_date = min(
+                                datetime.strptime(d, "%Y.%m.%d")
+                                for d in date_matches
+                            )
+                            first_review_date = oldest_date.strftime("%Y.%m.%d")
+
+            except Exception as e:
+                print("一番初めの評価日取得エラー:", e)
+                
         return {
             "No.": 0,
             "作家名": creator,
