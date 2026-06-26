@@ -651,7 +651,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
         return {
             "No.": 0,
-        　　 "商品URL": link,
+            "商品URL": link,
             "作家名": creator,
             "商品名": title,
             "価格(円)": price,
