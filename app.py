@@ -318,7 +318,22 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             print("元の評価URL:", base_rating_url)
             print("正規評価URL:", canonical_rating_url)
 
-            for current_page in range(1, 6):  # 5ページまで探索
+            # =========================
+            # 対象商品のレビュー日を取得
+            # =========================
+            # 直近1ヶ月の評価数は、
+            # 「対象商品のレビュー」のうち、直近30日以内の件数として数える。
+            #
+            # 以前は1〜5ページまで固定で見ていたが、
+            # これだと直近レビューが多い作家さんの場合に不足する。
+            #
+            # 変更後：
+            # ページ内の日付がすべて1ヶ月より古くなるまで探索する。
+            # =========================
+
+            max_review_pages = 50  # 念のため上限。重い場合は20〜30でもOK。
+
+            for current_page in range(1, max_review_pages + 1):
                 page_url = f"{canonical_rating_url}?page={current_page}"
                 print(f" - 取得URL: {page_url}")
 
@@ -345,9 +360,41 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                 print(f" - {current_page}ページ目: レビューブロック {len(blocks)}件")
 
                 found_in_page = 0
+                page_dates = []
 
                 for block in blocks:
-                    # レビュー内の商品名リンクを優先して取得
+                    # =========================
+                    # まず日付を取得
+                    # =========================
+                    date_tag = block.select_one(
+                        ".p-creator-rating-rating__date, "
+                        ".p-creator-rating-list__item-date"
+                    )
+
+                    if date_tag:
+                        date_text = date_tag.get_text(" ", strip=True)
+                    else:
+                        date_text = block.get_text(" ", strip=True)
+
+                    d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_text)
+
+                    if not d_match:
+                        continue
+
+                    found_date = datetime(
+                        int(d_match.group(1)),
+                        int(d_match.group(2)),
+                        int(d_match.group(3))
+                    )
+
+                    # このページに出てきた日付を記録
+                    # 対象商品かどうかに関係なく、
+                    # ページ探索を止める判断に使う
+                    page_dates.append(found_date)
+
+                    # =========================
+                    # 商品名リンクを取得
+                    # =========================
                     item_name_tag = block.select_one(
                         '.p-creator-rating-rating__title a[href*="/item/"], '
                         '.p-creator-rating-list__item-title a[href*="/item/"]'
@@ -366,7 +413,9 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                     review_href = item_name_tag.get("href", "")
 
+                    # =========================
                     # 商品名で一致判定
+                    # =========================
                     review_item_name = "".join(item_name_tag.get_text(strip=True).split())
 
                     is_same_by_name = (
@@ -380,32 +429,12 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     print("【一致】対象商品として処理")
                     print("対象商品名:", target_name[:80])
                     print("レビュー商品名:", review_item_name[:80])
+                    print("評価日:", found_date.strftime("%Y.%m.%d"))
                     print("-" * 50)
 
-                    # 日付を取得
-                    date_tag = block.select_one(
-                        ".p-creator-rating-rating__date, "
-                        ".p-creator-rating-list__item-date"
-                    )
-
-                    # classで日付が取れない場合に備えて、本文全体からも探す
-                    if date_tag:
-                        date_text = date_tag.get_text(" ", strip=True)
-                    else:
-                        date_text = block.get_text(" ", strip=True)
-
-                    d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_text)
-
-                    if not d_match:
-                        continue
-
-                    found_date = datetime(
-                        int(d_match.group(1)),
-                        int(d_match.group(2)),
-                        int(d_match.group(3))
-                    )
-
-                    # 同じレビューを二重取得しないためのキー
+                    # =========================
+                    # 二重取得防止
+                    # =========================
                     review_text = block.get_text(" ", strip=True)
                     review_key = f"{review_href}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
 
@@ -416,7 +445,28 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     all_found_dates.append(found_date)
                     found_in_page += 1
 
-                print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
+                print(f" - {current_page}ページ目終了: 対象商品一致 {found_in_page}件")
+
+                # =========================
+                # 探索終了判定
+                # =========================
+                # このページの日付がすべて直近1ヶ月より古いなら、
+                # これ以降のページもさらに古いはずなので終了。
+                # =========================
+                if page_dates:
+                    newest_date_in_page = max(page_dates)
+                    oldest_date_in_page = min(page_dates)
+
+                    print(
+                        f" - {current_page}ページ目の日付範囲: "
+                        f"{oldest_date_in_page.strftime('%Y.%m.%d')} 〜 "
+                        f"{newest_date_in_page.strftime('%Y.%m.%d')}"
+                    )
+
+                    if newest_date_in_page < one_month_ago:
+                        print(" - このページはすべて直近1ヶ月より古いため、探索終了")
+                        break
+
                 time.sleep(0.2)
             
             all_found_dates.sort(reverse=True)
