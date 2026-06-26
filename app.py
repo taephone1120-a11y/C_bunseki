@@ -105,25 +105,25 @@ with col_buy_tilde:
 with col_buy2:
     max_buy = st.number_input("購入者数（最大）", min_value=0, value=99999, label_visibility="collapsed")
 
-# 3. 直近販売日１
-st.sidebar.markdown("**直近販売日１**")
+# 3. 評価日１
+st.sidebar.markdown("**評価日１**")
 col_d1_1, col_d1_tilde, col_d1_2 = st.sidebar.columns([4, 1, 4])
 with col_d1_1:
-    min_date1 = st.date_input("直近販売日1（最小）", value=past_limit_date, label_visibility="collapsed")
+    min_date1 = st.date_input("評価日1（最小）", value=past_limit_date, label_visibility="collapsed")
 with col_d1_tilde:
     st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
 with col_d1_2:
-    max_date1 = st.date_input("直近販売日1（最大）", value=future_limit_date, label_visibility="collapsed")
+    max_date1 = st.date_input("評価日1（最大）", value=future_limit_date, label_visibility="collapsed")
 
-# 4. 直近販売日３
-st.sidebar.markdown("**直近販売日３**")
+# 4. 評価日３
+st.sidebar.markdown("**評価日３**")
 col_d3_1, col_d3_tilde, col_d3_2 = st.sidebar.columns([4, 1, 4])
 with col_d3_1:
-    min_date3 = st.date_input("直近販売日3（最小）", value=past_limit_date, label_visibility="collapsed")
+    min_date3 = st.date_input("評価日3（最小）", value=past_limit_date, label_visibility="collapsed")
 with col_d3_tilde:
     st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
 with col_d3_2:
-    max_date3 = st.date_input("直近販売日3（最大）", value=future_limit_date, label_visibility="collapsed")
+    max_date3 = st.date_input("評価日3（最大）", value=future_limit_date, label_visibility="collapsed")
 
 # 5. 総評価数
 st.sidebar.markdown("**総評価数**")
@@ -215,7 +215,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
     description_text = "取得失敗"
     recent_sales = ["ー", "ー", "ー"]
 
-    # 直近販売日は3ヶ月以内を対象にする
+    # 評価日は3ヶ月以内を対象にする
     three_months_ago = datetime.now() - timedelta(days=90)
 
     try:
@@ -384,7 +384,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             # 直近1ヶ月の評価数：
             #   対象商品のレビューのうち、直近30日以内の件数
             #
-            # 直近販売日1〜3：
+            # 評価日1〜3：
             #   レビュー日付が3ヶ月より古くなるページまで見て、
             #   その中で見つかった対象商品の直近3回分の日付を入れる
             # =========================
@@ -507,11 +507,11 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                 time.sleep(0.2)
 
             # =========================
-            # 直近販売日1〜3
+            # 評価日1〜3
             # =========================
             all_found_dates.sort(reverse=True)
 
-            # 3ヶ月以内の対象商品レビューだけを直近販売日として使う
+            # 3ヶ月以内の対象商品レビューだけを評価日として使う
             recent_three_month_dates = [
                 d for d in all_found_dates
                 if d >= three_months_ago
@@ -534,19 +534,19 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             purchase_num = parse_purchase_num(purchase_display)
 
             # =========================
-            # 直近販売日1〜3の表示ルール
+            # 評価日1〜3の表示ルール
             # =========================
             # 購入者数0人：
             #   すべて「ー」
             #
             # 購入者数1人：
-            #   直近販売日1だけ表示対象。2〜3は「ー」
+            #   評価日1だけ表示対象。2〜3は「ー」
             #
             # 購入者数2人：
-            #   直近販売日1〜2だけ表示対象。3は「ー」
+            #   評価日1〜2だけ表示対象。3は「ー」
             #
             # 購入者数3人以上：
-            #   直近販売日1〜3すべて表示対象
+            #   評価日1〜3すべて表示対象
             #
             # 表示対象の欄について：
             #   3ヶ月以内の日付が取れた欄は日付
@@ -614,9 +614,9 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             "商品URL": link,
             "お気に入り数": favorite,
             "購入者数": purchase_display,
-            "直近販売日1": recent_sales[0],
-            "直近販売日2": recent_sales[1],
-            "直近販売日3": recent_sales[2],
+            "評価日1": recent_sales[0],
+            "評価日2": recent_sales[1],
+            "評価日3": recent_sales[2],
             "総評価数": review,
             "直近1ヶ月の評価数": recent_review_display,
             "一番初めの評価日": first_review_date,
@@ -781,15 +781,15 @@ if st.session_state.raw_data is not None:
         # 3. 総評価数のチェック
         if not (min_rev <= row["総評価数"] <= max_rev): return False
         
-        # 4. 直近販売日1のチェック
-        d1 = parse_to_date(row["直近販売日1"])
+        # 4. 評価日1のチェック
+        d1 = parse_to_date(row["評価日1"])
         if d1:
             if not (min_date1 <= d1 <= max_date1): return False
         else:
             if not is_min_date1_default: return False
             
-        # 5. 直近販売日3のチェック
-        d3 = parse_to_date(row["直近販売日3"])
+        # 5. 評価日3のチェック
+        d3 = parse_to_date(row["評価日3"])
         if d3:
             if not (min_date3 <= d3 <= max_date3): return False
         else:
