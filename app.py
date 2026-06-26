@@ -701,11 +701,13 @@ def scrape_creema_fast(start_url, max_num):
     today = datetime.now()
     one_month_ago = today - timedelta(days=30)
     
-    all_item_elements_data = []
-    current_url = start_url
-    page_count = 1
-    detected_market_total = 0 
-    page_status = st.empty()
+all_item_elements_data = []
+seen_urls = set()  # 取得済みURLの重複チェック用
+
+current_url = start_url
+page_count = 1
+detected_market_total = 0 
+page_status = st.empty()
     
     while current_url and len(all_item_elements_data) < max_num:
         page_status.info(f" ページ巡回中... 現在 {page_count} ページ目をスキャンしています (収集済リンク: {len(all_item_elements_data)}件)")
@@ -730,16 +732,27 @@ def scrape_creema_fast(start_url, max_num):
                 if not title_tag: continue
                     
                 title = title_tag.text.strip()
-                link = "https://www.creema.jp" + title_tag["href"]
-                
-                desc_tag = item.select_one(".c-item-article__desc")
-                creator, price = "取得失敗", 0
-                if desc_tag and "/" in desc_tag.text:
-                    parts = desc_tag.text.split("/")
-                    price = int(re.sub(r"\D", "", parts[0])) if parts[0] else 0
-                    creator = parts[1].strip()
-                
-                all_item_elements_data.append({"link": link, "creator": creator, "title": title, "price": price})
+link = "https://www.creema.jp" + title_tag["href"]
+
+# URLの重複を防ぐ
+if link in seen_urls:
+    continue
+
+seen_urls.add(link)
+
+desc_tag = item.select_one(".c-item-article__desc")
+creator, price = "取得失敗", 0
+if desc_tag and "/" in desc_tag.text:
+    parts = desc_tag.text.split("/")
+    price = int(re.sub(r"\D", "", parts[0])) if parts[0] else 0
+    creator = parts[1].strip()
+
+all_item_elements_data.append({
+    "link": link,
+    "creator": creator,
+    "title": title,
+    "price": price
+})
             
             next_tag = soup.select_one("a.c-pagination__next")
             if next_tag and "href" in next_tag.attrs:
