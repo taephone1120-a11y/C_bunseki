@@ -875,9 +875,9 @@ def parse_recent_review_count(val):
             return False
 
         # 4. 直近1ヶ月の評価数のチェック
-　　　　　recent_review_num = parse_recent_review_count(row.get("直近1ヶ月の評価数", "0件"))
-　　　　　if not (min_recent_review <= recent_review_num <= max_recent_review):
-    　　　　　return False
+        recent_review_num = parse_recent_review_count(row.get("直近1ヶ月の評価数", "0件"))
+        if not (min_recent_review <= recent_review_num <= max_recent_review):
+            return False
         
         # 4. 評価日1のチェック
         d1 = parse_to_date(row.get("評価日1", "ー"))
