@@ -298,12 +298,12 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
                 r_soup = BeautifulSoup(r_res.content, "html.parser")
 
-                # 外側のレビュー1件単位だけを優先して取得
-                blocks = r_soup.select(".p-creator-rating-list__item")
+                # レビュー1件単位を優先して取得
+                blocks = r_soup.select(".p-creator-rating-rating__content")
 
-                # もし上のセレクタで取れない場合だけ、旧セレクタを使う
+                # もし上のセレクタで取れない場合だけ、別形式のレビュー枠を使う
                 if not blocks:
-                    blocks = r_soup.select(".p-creator-rating-rating__content")
+                    blocks = r_soup.select(".p-creator-rating-list__item")
 
                 if not blocks:
                     print(f" - {current_page}ページ目: レビューブロックが0件のため終了")
