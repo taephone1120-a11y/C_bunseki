@@ -213,7 +213,7 @@ def convert_df_to_excel(df):
 
             # 商品名は少しきゅっと狭める
             if header_name == "商品名":
-                worksheet.column_dimensions[col_letter].width = 10
+                worksheet.column_dimensions[col_letter].width = 1
                 for cell in col:
                     cell.alignment = Alignment(
                         horizontal="left",
