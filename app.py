@@ -791,9 +791,9 @@ if st.session_state.raw_data is not None:
     raw_df = pd.DataFrame(st.session_state.raw_data)
     
     # 数値変換の安全処理
-    raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors='coerce').fillna(0).astype(int)
-    raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors='coerce').fillna(0).astype(int)
-    raw_df["作家の総評価数"] = pd.to_numeric(raw_df["作家の総評価数"], errors='coerce').fillna(0).astype(int)
+raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors='coerce').fillna(0).astype(int)
+raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors='coerce').fillna(0).astype(int)
+raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').fillna(0).astype(int)
 
     # 購入者数の数値化（フィルタリング用）
     def parse_buyer_count(val):
@@ -844,7 +844,12 @@ if st.session_state.raw_data is not None:
     # フィルタリングの適用
     mask = raw_df.apply(filter_row, axis=1)
     filtered_df = raw_df[mask].copy()
-    
+　　# 表示・Excel出力用に列名変更
+　　filtered_df = filtered_df.rename(columns={
+   　　 "総評価数": "作家の総評価数"
+　　})
+
+
     if not filtered_df.empty:
         filtered_df["No."] = range(1, len(filtered_df) + 1)
 
