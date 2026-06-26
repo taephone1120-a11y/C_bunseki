@@ -226,11 +226,41 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         soup = BeautifulSoup(res.content, "html.parser")
 
         # =========================
-        # 作品説明取得
+        # 作品紹介文取得
         # =========================
-        desc_tag = soup.select_one(".p-item-detail__description, .p-item-detail-body__description")
+        # Creemaの商品説明は、商品によってclassが違うことがあるため、
+        # 複数パターンで探す。
+        desc_tag = soup.select_one(
+            "#introduction .p-item-detail-description, "
+            ".p-item-detail-description.js-internal-link, "
+            ".p-item-detail__description, "
+            ".p-item-detail-body__description"
+        )
+
         if desc_tag:
-            description_text = desc_tag.text.strip()
+            # <br> を改行として扱う
+            for br in desc_tag.find_all("br"):
+                br.replace_with("\n")
+
+            # <a href="...">URL</a> のURL文字列も残す
+            for a in desc_tag.find_all("a"):
+                href = a.get("href", "")
+                text = a.get_text(strip=True)
+
+                if href and href.startswith("/"):
+                    href = "https://www.creema.jp" + href
+
+                if href and (not text or text != href):
+                    a.replace_with(href)
+                else:
+                    a.replace_with(text)
+
+            description_text = desc_tag.get_text("\n", strip=True)
+
+            # 改行が多すぎる場合を整理
+            description_text = re.sub(r"\n{3,}", "\n\n", description_text)
+        else:
+            description_text = "取得失敗"
 
         # =========================
         # クリエイターの総評価数取得
