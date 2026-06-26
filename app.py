@@ -216,166 +216,186 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
     try:
         res = requests.get(link, headers=headers, timeout=10)
-        if res.status_code != 200: return None
+        if res.status_code != 200:
+            return None
+
         soup = BeautifulSoup(res.content, "html.parser")
-        
+
         # 作品説明取得
         desc_tag = soup.select_one(".p-item-detail__description, .p-item-detail-body__description")
-        if desc_tag: description_text = desc_tag.text.strip()
-            
+        if desc_tag:
+            description_text = desc_tag.text.strip()
+
         # お気に入り数取得
         fav_btn = soup.find(lambda tag: tag.name in ["button", "a"] and "お気に入りに追加" in tag.text)
         if fav_btn:
             num_part = fav_btn.select_one(".js-like-item-number, b, span")
             fav_text = re.sub(r"\D", "", num_part.text if num_part else fav_btn.text)
             favorite = int(fav_text) if fav_text else 0
-            
+
         # 購入者数取得
         buy_container = soup.select_one(".p-item-detail-info__item--left")
         if buy_container:
             text = buy_container.get_text(strip=True)
-            if "10人以上購入" in text: purchase_display = "10人以上"
+            if "10人以上購入" in text:
+                purchase_display = "10人以上"
             else:
                 match = re.search(r"(\d+)人購入", text)
-                if match: purchase_display = f"{match.group(1)}人"
-        
+                if match:
+                    purchase_display = f"{match.group(1)}人"
+
         # レビューページ解析
-rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
-if rating_link_tag:
-    href_attr = rating_link_tag["href"]
-    base_rating_url = href_attr if href_attr.startswith("http") else "https://www.creema.jp" + href_attr
+        rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
 
-    if "?" in base_rating_url:
-        base_rating_url = base_rating_url.split("?")[0]
+        if rating_link_tag:
+            href_attr = rating_link_tag["href"]
+            base_rating_url = href_attr if href_attr.startswith("http") else "https://www.creema.jp" + href_attr
 
-    # 重要：リダイレクト後の正規URLを取得する
-    try:
-        canonical_res = requests.get(base_rating_url, headers=headers, timeout=10)
-        if canonical_res.status_code == 200:
-            canonical_rating_url = canonical_res.url.split("?")[0]
-        else:
-            canonical_rating_url = base_rating_url
-    except:
-        canonical_rating_url = base_rating_url
+            if "?" in base_rating_url:
+                base_rating_url = base_rating_url.split("?")[0]
 
-    all_found_dates = []
-    seen_review_keys = set()
+            # 重要：リダイレクト後の正規URLを取得する
+            try:
+                canonical_res = requests.get(base_rating_url, headers=headers, timeout=10)
+                if canonical_res.status_code == 200:
+                    canonical_rating_url = canonical_res.url.split("?")[0]
+                else:
+                    canonical_rating_url = base_rating_url
+            except:
+                canonical_rating_url = base_rating_url
 
-    target_name = "".join(title.split())
+            all_found_dates = []
+            seen_review_keys = set()
 
-    print(f"[{title[:15]}...] レビュー探索開始")
-    print("元の評価URL:", base_rating_url)
-    print("正規評価URL:", canonical_rating_url)
+            target_name = "".join(title.split())
 
-    for current_page in range(1, 6):
-        page_url = f"{canonical_rating_url}?page={current_page}"
-        print(f" - 取得URL: {page_url}")
+            print(f"[{title[:15]}...] レビュー探索開始")
+            print("元の評価URL:", base_rating_url)
+            print("正規評価URL:", canonical_rating_url)
 
-        r_res = requests.get(page_url, headers=headers, timeout=10)
-        print(" - 最終URL:", r_res.url)
+            for current_page in range(1, 6):
+                page_url = f"{canonical_rating_url}?page={current_page}"
+                print(f" - 取得URL: {page_url}")
 
-        if r_res.status_code != 200:
-            print(f" - {current_page}ページ目: ステータスコード {r_res.status_code} のため終了")
-            break
+                r_res = requests.get(page_url, headers=headers, timeout=10)
+                print(" - 最終URL:", r_res.url)
 
-        r_soup = BeautifulSoup(r_res.content, "html.parser")
+                if r_res.status_code != 200:
+                    print(f" - {current_page}ページ目: ステータスコード {r_res.status_code} のため終了")
+                    break
 
-        blocks = r_soup.select(".p-creator-rating-list__item")
+                r_soup = BeautifulSoup(r_res.content, "html.parser")
 
-        if not blocks:
-            blocks = r_soup.select(".p-creator-rating-rating__content")
+                blocks = r_soup.select(".p-creator-rating-list__item")
 
-        if not blocks:
-            print(f" - {current_page}ページ目: レビューブロックが0件のため終了")
-            break
+                if not blocks:
+                    blocks = r_soup.select(".p-creator-rating-rating__content")
 
-        print(f" - {current_page}ページ目: レビューブロック {len(blocks)}件")
+                if not blocks:
+                    print(f" - {current_page}ページ目: レビューブロックが0件のため終了")
+                    break
 
-        found_in_page = 0
+                print(f" - {current_page}ページ目: レビューブロック {len(blocks)}件")
 
-        for block in blocks:
-            item_name_tag = block.select_one(
-                '.p-creator-rating-rating__title a[href*="/item/"], '
-                '.p-creator-rating-list__item-title a[href*="/item/"]'
-            )
+                found_in_page = 0
 
-            if not item_name_tag:
-                item_links = block.select('a[href*="/item/"]')
-                for a in item_links:
-                    if a.get_text(strip=True):
-                        item_name_tag = a
-                        break
+                for block in blocks:
+                    item_name_tag = block.select_one(
+                        '.p-creator-rating-rating__title a[href*="/item/"], '
+                        '.p-creator-rating-list__item-title a[href*="/item/"]'
+                    )
 
-            if not item_name_tag:
-                continue
+                    if not item_name_tag:
+                        item_links = block.select('a[href*="/item/"]')
+                        for a in item_links:
+                            if a.get_text(strip=True):
+                                item_name_tag = a
+                                break
 
-            review_href = item_name_tag.get("href", "")
-            review_item_name = "".join(item_name_tag.get_text(strip=True).split())
+                    if not item_name_tag:
+                        continue
 
-            is_same_by_name = (
-                target_name in review_item_name
-                or review_item_name in target_name
-            )
+                    review_href = item_name_tag.get("href", "")
+                    review_item_name = "".join(item_name_tag.get_text(strip=True).split())
 
-            if not is_same_by_name:
-                continue
+                    is_same_by_name = (
+                        target_name in review_item_name
+                        or review_item_name in target_name
+                    )
 
-            print("【一致】対象商品として処理")
-            print("対象商品名:", target_name[:80])
-            print("レビュー商品名:", review_item_name[:80])
-            print("-" * 50)
+                    if not is_same_by_name:
+                        continue
 
-            date_tag = block.select_one(
-                ".p-creator-rating-rating__date, "
-                ".p-creator-rating-list__item-date"
-            )
+                    print("【一致】対象商品として処理")
+                    print("対象商品名:", target_name[:80])
+                    print("レビュー商品名:", review_item_name[:80])
+                    print("-" * 50)
 
-            if date_tag:
-                date_text = date_tag.text
-            else:
-                date_text = block.get_text(" ", strip=True)
+                    date_tag = block.select_one(
+                        ".p-creator-rating-rating__date, "
+                        ".p-creator-rating-list__item-date"
+                    )
 
-            d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_text)
+                    if date_tag:
+                        date_text = date_tag.text
+                    else:
+                        date_text = block.get_text(" ", strip=True)
 
-            if not d_match:
-                continue
+                    d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_text)
 
-            found_date = datetime(
-                int(d_match.group(1)),
-                int(d_match.group(2)),
-                int(d_match.group(3))
-            )
+                    if not d_match:
+                        continue
 
-            review_text = block.get_text(" ", strip=True)
-            review_key = f"{review_href}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
+                    found_date = datetime(
+                        int(d_match.group(1)),
+                        int(d_match.group(2)),
+                        int(d_match.group(3))
+                    )
 
-            if review_key in seen_review_keys:
-                continue
+                    review_text = block.get_text(" ", strip=True)
+                    review_key = f"{review_href}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
 
-            seen_review_keys.add(review_key)
-            all_found_dates.append(found_date)
-            found_in_page += 1
+                    if review_key in seen_review_keys:
+                        continue
 
-        print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
-        time.sleep(0.2)
-            
+                    seen_review_keys.add(review_key)
+                    all_found_dates.append(found_date)
+                    found_in_page += 1
+
+                print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
+                time.sleep(0.2)
+
             all_found_dates.sort(reverse=True)
+
             for i in range(min(3, len(all_found_dates))):
                 recent_sales[i] = all_found_dates[i].strftime("%Y.%m.%d")
-            
+
             review = len(all_found_dates)
             recent_month_count = sum(1 for d in all_found_dates if d >= one_month_ago)
             recent_review_display = f"{recent_month_count}件"
-            if all_found_dates: first_review_date = min(all_found_dates).strftime("%Y.%m.%d")
+
+            if all_found_dates:
+                first_review_date = min(all_found_dates).strftime("%Y.%m.%d")
 
         return {
-            "No.": 0, "作家名": creator, "商品名": title, "価格(円)": price, "商品URL": link,
-            "お気に入り数": favorite, "購入者数": purchase_display,  
-            "直近販売日1": recent_sales[0], "直近販売日2": recent_sales[1], "直近販売日3": recent_sales[2],
-            "総評価数": review, "直近1ヶ月の評価数": recent_review_display, "一番初めの評価日": first_review_date,
-            "作品紹介文": description_text 
+            "No.": 0,
+            "作家名": creator,
+            "商品名": title,
+            "価格(円)": price,
+            "商品URL": link,
+            "お気に入り数": favorite,
+            "購入者数": purchase_display,
+            "直近販売日1": recent_sales[0],
+            "直近販売日2": recent_sales[1],
+            "直近販売日3": recent_sales[2],
+            "総評価数": review,
+            "直近1ヶ月の評価数": recent_review_display,
+            "一番初めの評価日": first_review_date,
+            "作品紹介文": description_text
         }
-    except:
+
+    except Exception as e:
+        print("詳細解析エラー:", e)
         return None
 
 # =============================================
