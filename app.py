@@ -236,7 +236,8 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         )
 
         if desc_tag:
-            # <a href="...">URL</a> は表示テキストを残す
+            # aタグは表示テキストを残す。
+            # 表示テキストが空ならhrefを残す。
             for a in desc_tag.find_all("a"):
                 text = a.get_text(strip=True)
                 href = a.get("href", "")
@@ -251,34 +252,25 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                 else:
                     a.decompose()
 
-            # <br> を改行に変換
-            for br in desc_tag.find_all("br"):
-                br.replace_with("\n")
+            # HTML文字列として取り出す
+            desc_html = str(desc_tag)
 
-            # separator="" にするとHTML由来の余計な空白を拾いにくい
-            description_text = desc_tag.get_text(separator="", strip=False)
+            # <br> / <br/> / <br /> を、1個につき1つの改行に変換
+            desc_html = re.sub(r"<br\s*/?>", "\n", desc_html, flags=re.IGNORECASE)
+
+            # 変換後のHTMLからタグを除去
+            desc_soup = BeautifulSoup(desc_html, "html.parser")
+            description_text = desc_soup.get_text(separator="", strip=False)
 
             # 改行コードを統一
             description_text = description_text.replace("\r\n", "\n").replace("\r", "\n")
 
-            # 各行の前後スペースを削除
+            # HTML由来の行頭・行末スペースだけ削除
             lines = [line.strip() for line in description_text.split("\n")]
+            description_text = "\n".join(lines)
 
-            cleaned_lines = []
-            blank_count = 0
-
-            for line in lines:
-                if line == "":
-                    blank_count += 1
-
-                    # 空行は最大1行だけ残す
-                    if blank_count <= 1:
-                        cleaned_lines.append("")
-                else:
-                    blank_count = 0
-                    cleaned_lines.append(line)
-
-            description_text = "\n".join(cleaned_lines).strip()
+            # 先頭・末尾の余分な改行だけ削除
+            description_text = description_text.strip("\n ")
 
         else:
             description_text = "取得失敗"
