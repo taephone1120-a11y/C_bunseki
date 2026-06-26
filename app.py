@@ -847,6 +847,35 @@ if st.session_state.raw_data is not None:
     
     if not filtered_df.empty:
         filtered_df["No."] = range(1, len(filtered_df) + 1)
+
+    # =========================
+    # 表示・Excel出力用に列名と列順を整える
+    # =========================
+
+    filtered_df = filtered_df.rename(columns={
+        "総評価数": "作家の総評価数"
+    })
+
+    preferred_columns = [
+        "商品URL",
+        "No.",
+        "作家名",
+        "商品名",
+        "価格(円)",
+        "作品紹介文",
+        "直近1ヶ月の評価数",
+        "作家の総評価数",
+        "購入者数",
+        "お気に入り数",
+        "評価日1",
+        "評価日2",
+        "評価日3",
+        "一番初めの評価日",
+    ]
+
+    existing_columns = [col for col in preferred_columns if col in filtered_df.columns]
+    other_columns = [col for col in filtered_df.columns if col not in existing_columns]
+    filtered_df = filtered_df[existing_columns + other_columns]
         
     st.markdown(f"**現在の表示件数:** {len(filtered_df)} 件 / 全体 {len(raw_df)} 件")
     
