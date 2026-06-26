@@ -849,28 +849,30 @@ if st.session_state.raw_data is not None:
         
     st.markdown(f"**現在の表示件数:** {len(filtered_df)} 件 / 全体 {len(raw_df)} 件")
     
-st.dataframe(
-    filtered_df,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "商品名": st.column_config.TextColumn(
-            "商品名",
-            width="small"
-        ),
-        "作品紹介文": st.column_config.TextColumn(
-            "作品紹介文",
-            width="large"
-        ),
-        "商品URL": st.column_config.LinkColumn(
-            "商品URL",
-            display_text="リンクを開く",
-            width="small"
-        ),
-    }
-)
+    # 画面表示のテーブルで商品URLをクリック可能なリンクにする設定
+    st.dataframe(
+        filtered_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "商品名": st.column_config.TextColumn(
+                "商品名",
+                width="small"
+            ),
+            "作品紹介文": st.column_config.TextColumn(
+                "作品紹介文",
+                width="large"
+            ),
+            "商品URL": st.column_config.LinkColumn(
+                "商品URL",
+                display_text="リンクを開く",
+                width="small"
+            ),
+        }
+    )
     
     excel_data = convert_df_to_excel(filtered_df)
+
     st.download_button(
         label="📥 絞り込んだデータをExcelでダウンロード",
         data=excel_data,
