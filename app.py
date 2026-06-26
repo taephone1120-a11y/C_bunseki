@@ -125,15 +125,15 @@ with col_d3_tilde:
 with col_d3_2:
     max_date3 = st.date_input("評価日3（最大）", value=future_limit_date, label_visibility="collapsed")
 
-# 5. 総評価数
-st.sidebar.markdown("**総評価数**")
+# 5. 作家の総評価数
+st.sidebar.markdown("**作家の総評価数**")
 col_rev1, col_rev_tilde, col_rev2 = st.sidebar.columns([4, 1, 4])
 with col_rev1:
-    min_rev = st.number_input("総評価数（最小）", min_value=0, value=0, label_visibility="collapsed")
+    min_rev = st.number_input("作家の総評価数（最小）", min_value=0, value=0, label_visibility="collapsed")
 with col_rev_tilde:
     st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
 with col_rev2:
-    max_rev = st.number_input("総評価数（最大）", min_value=0, value=99999, label_visibility="collapsed")
+    max_rev = st.number_input("作家の総評価数（最大）", min_value=0, value=99999, label_visibility="collapsed")
 
 # =============================================
 #   📲 LINE通知関数
@@ -252,7 +252,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
     favorite = 0
     purchase_display = "0人"
-    review = 0  # クリエイター欄の総評価数
+    review = 0  # クリエイター欄の作家の総評価数
     recent_review_display = "0件"
     first_review_date = "データなし"
     description_text = "取得失敗"
@@ -342,7 +342,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             description_text = "取得失敗"
 
         # =========================
-        # クリエイターの総評価数取得
+        # クリエイターの作家の総評価数取得
         # =========================
         creator_rating_tag = soup.select_one(
             "#js-creator-rating-average .p-item-detail-creator__rating-count a"
@@ -616,19 +616,19 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             recent_review_display = f"{recent_month_count}件"
 
             # =========================
-            # 一番初めの評価日
+            # 作家の一番初めの評価日
             # =========================
-            # クリエイターの総評価数から最終ページを計算し、
+            # クリエイターの作家の総評価数から最終ページを計算し、
             # 最終ページ内の日付の中で一番古い日付を使う
             try:
                 if review > 0:
                     last_page = math.ceil(review / 20)
 
                     last_page_url = f"{canonical_rating_url}?page={last_page}"
-                    print("一番初めの評価日チェックURL:", last_page_url)
+                    print("作家の一番初めの評価日チェックURL:", last_page_url)
 
                     last_res = requests.get(last_page_url, headers=headers, timeout=10)
-                    print("一番初めの評価日チェック 最終URL:", last_res.url)
+                    print("作家の一番初めの評価日チェック 最終URL:", last_res.url)
 
                     if last_res.status_code == 200:
                         last_soup = BeautifulSoup(last_res.content, "html.parser")
@@ -647,23 +647,24 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                             first_review_date = oldest_date.strftime("%Y.%m.%d")
 
             except Exception as e:
-                print("一番初めの評価日取得エラー:", e)
+                print("作家の一番初めの評価日取得エラー:", e)
 
         return {
             "No.": 0,
+        　　 "商品URL": link,
             "作家名": creator,
             "商品名": title,
             "価格(円)": price,
-            "商品URL": link,
+            "作品紹介文": description_text
+            "直近1ヶ月の評価数": recent_review_display,
+            "作家の総評価数": review,
             "お気に入り数": favorite,
             "購入者数": purchase_display,
             "評価日1": recent_sales[0],
             "評価日2": recent_sales[1],
             "評価日3": recent_sales[2],
-            "総評価数": review,
-            "直近1ヶ月の評価数": recent_review_display,
-            "一番初めの評価日": first_review_date,
-            "作品紹介文": description_text
+            "作家の一番初めの評価日": first_review_date,
+           
         }
 
     except Exception as e:
@@ -792,7 +793,7 @@ if st.session_state.raw_data is not None:
     # 数値変換の安全処理
     raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors='coerce').fillna(0).astype(int)
     raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors='coerce').fillna(0).astype(int)
-    raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').fillna(0).astype(int)
+    raw_df["作家の総評価数"] = pd.to_numeric(raw_df["作家の総評価数"], errors='coerce').fillna(0).astype(int)
 
     # 購入者数の数値化（フィルタリング用）
     def parse_buyer_count(val):
@@ -821,8 +822,8 @@ if st.session_state.raw_data is not None:
         buyer_num = parse_buyer_count(row["購入者数"])
         if not (min_buy <= buyer_num <= max_buy): return False
         
-        # 3. 総評価数のチェック
-        if not (min_rev <= row["総評価数"] <= max_rev): return False
+        # 3. 作家の総評価数のチェック
+        if not (min_rev <= row["作家の総評価数"] <= max_rev): return False
         
         # 4. 評価日1のチェック
         d1 = parse_to_date(row["評価日1"])
