@@ -192,9 +192,42 @@ def convert_df_to_excel(df):
                     else: 
                         cell.alignment = Alignment(horizontal="left", vertical="center")
                         
-        for col in worksheet.columns:
-            max_len = max(len(str(cell.value or '')) for cell in col)
-            worksheet.column_dimensions[col[0].column_letter].width = min(max(max_len + 3, 10), 50)
+for col in worksheet.columns:
+    col_letter = col[0].column_letter
+    header_name = col[0].value
+
+    max_len = max(len(str(cell.value or '')) for cell in col)
+
+    # 商品名だけ少し幅を狭める
+    if header_name == "商品名":
+        worksheet.column_dimensions[col_letter].width = 28
+
+        # 商品名は折り返して表示
+        for cell in col:
+            cell.alignment = Alignment(
+                horizontal="left",
+                vertical="top",
+                wrap_text=True
+            )
+
+    # 作品紹介文は広めにする
+    elif header_name == "作品紹介文":
+        worksheet.column_dimensions[col_letter].width = 45
+
+        for cell in col:
+            cell.alignment = Alignment(
+                horizontal="left",
+                vertical="top",
+                wrap_text=True
+            )
+
+    # 商品URLは短め
+    elif header_name == "商品URL":
+        worksheet.column_dimensions[col_letter].width = 18
+
+    # その他の列は今まで通り自動調整
+    else:
+        worksheet.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 25)
             
     return output.getvalue()
 
