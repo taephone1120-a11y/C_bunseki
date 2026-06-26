@@ -789,22 +789,41 @@ if start_button:
 # --- 画面表示処理 ---
 if st.session_state.raw_data is not None:
     raw_df = pd.DataFrame(st.session_state.raw_data)
-    
+
+    # 古い取得結果が session_state に残っている場合の保険
+    raw_df = raw_df.rename(columns={
+        "総評価数": "作家の総評価数",
+        "直近販売日1": "評価日1",
+        "直近販売日2": "評価日2",
+        "直近販売日3": "評価日3",
+        "一番初めの評価日": "作家の一番初めの評価日",
+    })
+
+    for col in ["評価日1", "評価日2", "評価日3"]:
+        if col not in raw_df.columns:
+            raw_df[col] = "ー"
+
+    if "作家の総評価数" not in raw_df.columns:
+        raw_df["作家の総評価数"] = 0
+
     # 数値変換の安全処理
-raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors='coerce').fillna(0).astype(int)
-raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors='coerce').fillna(0).astype(int)
-raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').fillna(0).astype(int)
+    raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors='coerce').fillna(0).astype(int)
+    raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors='coerce').fillna(0).astype(int)
+    raw_df["作家の総評価数"] = pd.to_numeric(raw_df["作家の総評価数"], errors='coerce').fillna(0).astype(int)
 
     # 購入者数の数値化（フィルタリング用）
     def parse_buyer_count(val):
-        if not isinstance(val, str): return 0
-        if "10人以上" in val: return 10
+        if not isinstance(val, str):
+            return 0
+        if "10人以上" in val:
+            return 10
         match = re.search(r"(\d+)", val)
         return int(match.group(1)) if match else 0
 
     # 日付フィルタ処理のための関数
     def parse_to_date(val):
-        if not isinstance(val, str): return None
+        if not isinstance(val, str):
+            return None
         match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", val)
         if match:
             return datetime.strptime(match.group(0), "%Y.%m.%d").date()
@@ -816,51 +835,48 @@ raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').
 
     def filter_row(row):
         # 1. 価格のチェック
-        if not (min_price <= row["価格(円)"] <= max_price): return False
+        if not (min_price <= row["価格(円)"] <= max_price):
+            return False
 
         # 2. 購入者数のチェック
         buyer_num = parse_buyer_count(row["購入者数"])
-        if not (min_buy <= buyer_num <= max_buy): return False
+        if not (min_buy <= buyer_num <= max_buy):
+            return False
         
         # 3. 作家の総評価数のチェック
-        if not (min_rev <= row["作家の総評価数"] <= max_rev): return False
+        if not (min_rev <= row["作家の総評価数"] <= max_rev):
+            return False
         
         # 4. 評価日1のチェック
-        d1 = parse_to_date(row["評価日1"])
+        d1 = parse_to_date(row.get("評価日1", "ー"))
         if d1:
-            if not (min_date1 <= d1 <= max_date1): return False
+            if not (min_date1 <= d1 <= max_date1):
+                return False
         else:
-            if not is_min_date1_default: return False
+            if not is_min_date1_default:
+                return False
             
         # 5. 評価日3のチェック
-        d3 = parse_to_date(row["評価日3"])
+        d3 = parse_to_date(row.get("評価日3", "ー"))
         if d3:
-            if not (min_date3 <= d3 <= max_date3): return False
+            if not (min_date3 <= d3 <= max_date3):
+                return False
         else:
-            if not is_min_date3_default: return False
+            if not is_min_date3_default:
+                return False
             
         return True
 
     # フィルタリングの適用
     mask = raw_df.apply(filter_row, axis=1)
     filtered_df = raw_df[mask].copy()
-　　# 表示・Excel出力用に列名変更
-　　filtered_df = filtered_df.rename(columns={
-   　　 "総評価数": "作家の総評価数"
-　　})
-
 
     if not filtered_df.empty:
         filtered_df["No."] = range(1, len(filtered_df) + 1)
 
     # =========================
-    # 表示・Excel出力用に列名と列順を整える
+    # 表示・Excel出力用に列順を整える
     # =========================
-
-    filtered_df = filtered_df.rename(columns={
-        "総評価数": "作家の総評価数"
-    })
-
     preferred_columns = [
         "商品URL",
         "No.",
@@ -875,7 +891,7 @@ raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').
         "評価日1",
         "評価日2",
         "評価日3",
-        "一番初めの評価日",
+        "作家の一番初めの評価日",
     ]
 
     existing_columns = [col for col in preferred_columns if col in filtered_df.columns]
@@ -884,7 +900,6 @@ raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').
         
     st.markdown(f"**現在の表示件数:** {len(filtered_df)} 件 / 全体 {len(raw_df)} 件")
     
-    # 画面表示のテーブルで商品URLをクリック可能なリンクにする設定
     st.dataframe(
         filtered_df,
         use_container_width=True,
@@ -897,6 +912,14 @@ raw_df["総評価数"] = pd.to_numeric(raw_df["総評価数"], errors='coerce').
             "作品紹介文": st.column_config.TextColumn(
                 "作品紹介文",
                 width="large"
+            ),
+            "直近1ヶ月の評価数": st.column_config.TextColumn(
+                "直近1ヶ月の評価数",
+                width="small"
+            ),
+            "作家の総評価数": st.column_config.NumberColumn(
+                "作家の総評価数",
+                width="small"
             ),
             "商品URL": st.column_config.LinkColumn(
                 "商品URL",
