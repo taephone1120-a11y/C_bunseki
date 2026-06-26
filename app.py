@@ -236,41 +236,64 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         )
 
         if desc_tag:
-            # aタグは表示テキストを残す。
-            # 表示テキストが空ならhrefを残す。
-            for a in desc_tag.find_all("a"):
-                text = a.get_text(strip=True)
-                href = a.get("href", "")
+            def extract_description_with_br(tag):
+                parts = []
 
-                if href and href.startswith("/"):
-                    href = "https://www.creema.jp" + href
+                def walk(node):
+                    # テキストノード
+                    if isinstance(node, str):
+                        text = node
 
-                if text:
-                    a.replace_with(text)
-                elif href:
-                    a.replace_with(href)
-                else:
-                    a.decompose()
+                        # HTMLのインデントだけの空白は無視
+                        if text.strip() == "":
+                            return
 
-            # HTML文字列として取り出す
-            desc_html = str(desc_tag)
+                        # 行頭行末の余計な空白だけ削る
+                        parts.append(text.strip())
+                        return
 
-            # <br> / <br/> / <br /> を、1個につき1つの改行に変換
-            desc_html = re.sub(r"<br\s*/?>", "\n", desc_html, flags=re.IGNORECASE)
+                    # brタグは1個につき改行1つ
+                    if getattr(node, "name", None) == "br":
+                        parts.append("\n")
+                        return
 
-            # 変換後のHTMLからタグを除去
-            desc_soup = BeautifulSoup(desc_html, "html.parser")
-            description_text = desc_soup.get_text(separator="", strip=False)
+                    # aタグは表示テキストを残す
+                    if getattr(node, "name", None) == "a":
+                        text = node.get_text(strip=True)
+                        href = node.get("href", "")
 
-            # 改行コードを統一
-            description_text = description_text.replace("\r\n", "\n").replace("\r", "\n")
+                        if href and href.startswith("/"):
+                            href = "https://www.creema.jp" + href
 
-            # HTML由来の行頭・行末スペースだけ削除
-            lines = [line.strip() for line in description_text.split("\n")]
-            description_text = "\n".join(lines)
+                        if text:
+                            parts.append(text)
+                        elif href:
+                            parts.append(href)
+                        return
 
-            # 先頭・末尾の余分な改行だけ削除
-            description_text = description_text.strip("\n ")
+                    # その他のタグは中身を再帰的に見る
+                    if hasattr(node, "children"):
+                        for child in node.children:
+                            walk(child)
+
+                for child in tag.children:
+                    walk(child)
+
+                text = "".join(parts)
+
+                # 改行コードを統一
+                text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+                # 各行の前後スペースだけ削る
+                lines = [line.strip() for line in text.split("\n")]
+                text = "\n".join(lines)
+
+                # 先頭・末尾の余計な改行だけ削除
+                text = text.strip("\n ")
+
+                return text
+
+            description_text = extract_description_with_br(desc_tag)
 
         else:
             description_text = "取得失敗"
