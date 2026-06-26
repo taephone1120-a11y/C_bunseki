@@ -215,6 +215,9 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
     description_text = "取得失敗"
     recent_sales = ["ー", "ー", "ー"]
 
+# 直近販売日は、3ヶ月以内のレビューだけを対象にする
+three_months_ago = datetime.now() - timedelta(days=90)
+
     try:
         res = requests.get(link, headers=headers, timeout=10)
         if res.status_code != 200:
@@ -321,17 +324,18 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             # =========================
             # 対象商品のレビュー日を取得
             # =========================
-            # 直近1ヶ月の評価数は、
-            # 「対象商品のレビュー」のうち、直近30日以内の件数として数える。
+            # 直近1ヶ月の評価数：
+            #   対象商品のレビューのうち、直近30日以内の件数
             #
-            # 以前は1〜5ページまで固定で見ていたが、
-            # これだと直近レビューが多い作家さんの場合に不足する。
+            # 直近販売日1〜3：
+            #   レビュー日付が3ヶ月より古くなるページまで見て、
+            #   その中で見つかった対象商品の直近3回分の日付を入れる。
             #
-            # 変更後：
-            # ページ内の日付がすべて1ヶ月より古くなるまで探索する。
+            # 対象商品のレビューが3ヶ月以内に見つからない場合：
+            #   直近販売日1〜3には「3ヶ月以上前」を入れる
             # =========================
 
-            max_review_pages = 50  # 念のため上限。重い場合は20〜30でもOK。
+            max_review_pages = 80  # 念のため上限。重い場合は50でもOK。
 
             for current_page in range(1, max_review_pages + 1):
                 page_url = f"{canonical_rating_url}?page={current_page}"
@@ -450,7 +454,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                 # =========================
                 # 探索終了判定
                 # =========================
-                # このページの日付がすべて直近1ヶ月より古いなら、
+                # このページの日付がすべて3ヶ月より古いなら、
                 # これ以降のページもさらに古いはずなので終了。
                 # =========================
                 if page_dates:
@@ -463,16 +467,25 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         f"{newest_date_in_page.strftime('%Y.%m.%d')}"
                     )
 
-                    if newest_date_in_page < one_month_ago:
-                        print(" - このページはすべて直近1ヶ月より古いため、探索終了")
+                    if newest_date_in_page < three_months_ago:
+                        print(" - このページはすべて3ヶ月より古いため、探索終了")
                         break
 
                 time.sleep(0.2)
             
             all_found_dates.sort(reverse=True)
 
-            for i in range(min(3, len(all_found_dates))):
-                recent_sales[i] = all_found_dates[i].strftime("%Y.%m.%d")
+            # 3ヶ月以内の対象商品レビューだけを直近販売日として使う
+            recent_three_month_dates = [
+                d for d in all_found_dates
+                if d >= three_months_ago
+            ]
+
+            if recent_three_month_dates:
+                for i in range(min(3, len(recent_three_month_dates))):
+                    recent_sales[i] = recent_three_month_dates[i].strftime("%Y.%m.%d")
+            else:
+                recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
             
             # 注意：
             # 総評価数 review は、クリエイター欄から取得済み。
