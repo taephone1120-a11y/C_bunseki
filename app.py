@@ -259,13 +259,8 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         
         # レビューページ解析
         rating_link_tag = soup.select_one('a[href*="/rating/sale"]')
-
-        print("========== 商品解析開始 ==========")
-        print("商品名:", title)
-        print("商品URL:", link)
-        print("rating_link_tag:", rating_link_tag.get("href") if rating_link_tag else "なし")
         debug_logs.append(f"評価リンク: {rating_link_tag.get('href') if rating_link_tag else 'なし'}")
-        
+
         if rating_link_tag:
             href_attr = rating_link_tag["href"]
             base_rating_url = href_attr if href_attr.startswith("http") else "https://www.creema.jp" + href_attr
@@ -275,216 +270,98 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             all_found_dates = []
             seen_review_keys = set()
 
-            target_name = "".join(title.split())
+            # 商品名比較用：商品ID判定は使わない
+            clean_target = " ".join(title.strip().split())
+            normalized_target_name = normalize_item_name(title)
 
-            # 商品URLから商品IDを取得
-            target_item_id_match = re.search(r"/item/(\d+)", link)
-            target_item_id = target_item_id_match.group(1) if target_item_id_match else None
-
-            # --- 探索ログ追加 ---
             print(f"[{title[:15]}...] レビュー探索開始")
 
             for current_page in range(1, 6):  # 5ページまで探索
                 page_url = f"{base_rating_url}?page={current_page}"
-                print(f" - 取得URL: {page_url}")
                 debug_logs.append(f"{current_page}ページ目URL: {page_url}")
-                
-                r_res = requests.get(page_url, headers=headers, timeout=10)
+
+                try:
+                    r_res = requests.get(page_url, headers=headers, timeout=20)
+                except Exception as e:
+                    debug_logs.append(f"{current_page}ページ目: 取得エラー {e}")
+                    break
 
                 if r_res.status_code != 200:
-                    print(f" - {current_page}ページ目: ステータスコード {r_res.status_code} のため終了")
-                    debug_logs.append(f"{current_page}ページ目: レビューブロック {len(blocks)}件")
+                    debug_logs.append(f"{current_page}ページ目: ステータスコード {r_res.status_code} のため終了")
                     break
 
                 r_soup = BeautifulSoup(r_res.content, "html.parser")
 
-                # レビュー1件単位を優先して取得
+                # Creemaの通常の評価ブロックを優先。なければ別形式も見る
                 blocks = r_soup.select(".p-creator-rating-rating__content")
-
-                # もし上のセレクタで取れない場合だけ、別形式のレビュー枠を使う
                 if not blocks:
                     blocks = r_soup.select(".p-creator-rating-list__item")
 
                 if not blocks:
-                    print(f" - {current_page}ページ目: レビューブロックが0件のため終了")
+                    debug_logs.append(f"{current_page}ページ目: レビューブロック0件")
                     break
 
-                print(f" - {current_page}ページ目: レビューブロック {len(blocks)}件")
-
+                debug_logs.append(f"{current_page}ページ目: レビューブロック {len(blocks)}件")
                 found_in_page = 0
 
-　　　　　clean_target = " ".join(title.strip().split())
-
-　　　　　for block in blocks:
-    　　　　　title_tags = block.select(".p-creator-rating-rating__title a, .p-creator-rating-list__item-title a")
-
-    　　　　　is_target = False
-    　　　　　review_item_name = ""
-
-   　　　　　 for t in title_tags:
-        　　　　　candidate_name = " ".join(t.text.strip().split())
-
-     　　　　　   if candidate_name == clean_target:
-        　　　　　    is_target = True
-        　　　　　    review_item_name = candidate_name
-        　　　　　    break
-
-   　　　　　 if not is_target:
-   　　　　　     continue
-
-  　　　　　  voice_tag = block.select_one(".p-creator-rating-rating__voice")
- 　　　　　   if voice_tag:
-  　　　　　      date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
-  　　　　　  else:
-  　　　　　      date_tag = block.select_one(".p-creator-rating-rating__date, .p-creator-rating-list__item-date")
-
-  　　　　　  if not date_tag:
-  　　　　　      continue
-
- 　　　　　   date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.text)
-  　　　　　  if not date_match:
-   　　　　　     continue
-
-  　　　　　  found_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
-
-  　　　　　  review_text = block.get_text(" ", strip=True)
-  　　　　　  review_key = f"{review_item_name}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
-
-   　　　　　 if review_key in seen_review_keys:
-   　　　　　     continue
-
-  　　　　　  seen_review_keys.add(review_key)
-  　　　　　  all_found_dates.append(found_date)
-  　　　　　  found_in_page += 1
-                    # レビュー内の商品名リンクを優先して取得
-                    item_name_tag = block.select_one(
-                        '.p-creator-rating-rating__title a[href*="/item/"], '
-                        '.p-creator-rating-list__item-title a[href*="/item/"]'
+                for block in blocks:
+                    title_tags = block.select(
+                        ".p-creator-rating-rating__title a, "
+                        ".p-creator-rating-list__item-title a"
                     )
 
-                    # 商品名リンクが取れない場合だけ、文字が入っている /item/ リンクを探す
-                    if not item_name_tag:
-                        item_links = block.select('a[href*="/item/"]')
-                        for a in item_links:
-                            if a.get_text(strip=True):
-                                item_name_tag = a
-                                break
+                    is_target = False
+                    review_item_name = ""
 
-                    if not item_name_tag:
-                        continue
+                    for t in title_tags:
+                        candidate_name = " ".join(t.get_text(strip=True).split())
+                        normalized_candidate_name = normalize_item_name(candidate_name)
 
-                    review_href = item_name_tag.get("href", "")
+                        # まず完全一致。完全一致しない場合だけ、記号・空白を除いた名前で一致を見る
+                        if candidate_name == clean_target:
+                            is_target = True
+                            review_item_name = candidate_name
+                            break
 
-                    # レビュー側の商品IDを取得
-                    review_item_id_match = re.search(r"/item/(\d+)", review_href)
-                    review_item_id = review_item_id_match.group(1) if review_item_id_match else None
-
-                    # hrefから商品IDが取れない場合、ブロック全体のHTMLから探す
-                    if not review_item_id:
-                        block_html = str(block)
-                        review_item_id_match = re.search(r"/item/(\d+)", block_html)
-                        review_item_id = review_item_id_match.group(1) if review_item_id_match else None
-
-                    # 商品名も取得しておく
-                    review_item_name = item_name_tag.get_text(strip=True)
-
-                    # 比較用に商品名を正規化する
-                    normalized_target_name = normalize_item_name(title)
-                    normalized_review_name = normalize_item_name(review_item_name)
-
-                    # 商品IDで一致しているか
-                    is_same_by_id = (
-                        target_item_id
-                        and review_item_id
-                        and target_item_id == review_item_id
-                    )
-
-                    # 商品名で一致しているか
-                    is_same_by_name = (
-                        normalized_target_name in normalized_review_name
-                        or normalized_review_name in normalized_target_name
-                    )
-
-                    # 商品名を語句に分解して、共通語句が多ければ同じ商品とみなす
-                    target_words = re.findall(r"[一-龥ぁ-んァ-ヶA-Za-z0-9]+", title)
-                    review_words = re.findall(r"[一-龥ぁ-んァ-ヶA-Za-z0-9]+", review_item_name)
-
-                    target_words = [w for w in target_words if len(w) >= 3]
-                    review_words = [w for w in review_words if len(w) >= 3]
-
-                    common_words = set(target_words) & set(review_words)
-
-                    is_same_by_words = len(common_words) >= 2
-
-                    # ID・商品名・共通語句のどれかで一致すれば対象商品とする
-                    is_same_item = is_same_by_id or is_same_by_name or is_same_by_words
-
-                    # ラブラドライトだけ確認ログを出す
-                    if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
-                        print("【ラブラドライト判定チェック】")
-                        print("is_same_by_id:", is_same_by_id)
-                        print("is_same_by_name:", is_same_by_name)
-                        print("is_same_item:", is_same_item)
-                        print("対象ID:", target_item_id)
-                        print("レビューID:", review_item_id)
-                        print("対象商品名:", target_name[:120])
-                        print("レビュー商品名:", review_item_name[:120])
-                        print("-" * 50)
-
-                    if not is_same_item:
-                        if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
-                            debug_logs.append(
-                                "対象外判定: "
-                                f"page={current_page} / "
-                                f"対象ID={target_item_id} / "
-                                f"レビューID={review_item_id} / "
-                                f"ID一致={is_same_by_id} / "
-                                f"名前一致={is_same_by_name} / "
-                                f"対象名={title[:80]} / "
-                                f"レビュー名={review_item_name[:80]}"
+                        if (
+                            normalized_candidate_name
+                            and (
+                                normalized_candidate_name == normalized_target_name
+                                or normalized_candidate_name in normalized_target_name
+                                or normalized_target_name in normalized_candidate_name
                             )
+                        ):
+                            is_target = True
+                            review_item_name = candidate_name
+                            break
+
+                    if not is_target:
                         continue
 
-                    print("【一致】対象商品として処理")
-                    print("対象ID:", target_item_id)
-                    print("レビューID:", review_item_id)
-                    print("対象商品名:", target_name[:80])
-                    print("レビュー商品名:", review_item_name[:80])
-                    print("-" * 50)
-                                   
-
-                    # 日付を取得
-                    date_tag = block.select_one(
-                        ".p-creator-rating-rating__date, "
-                        ".p-creator-rating-list__item-date"
-                    )
+                    # 日付はレビュー本文エリア内を優先して取得
+                    voice_tag = block.select_one(".p-creator-rating-rating__voice")
+                    if voice_tag:
+                        date_tag = voice_tag.select_one(".p-creator-rating-rating__date")
+                    else:
+                        date_tag = block.select_one(
+                            ".p-creator-rating-rating__date, "
+                            ".p-creator-rating-list__item-date"
+                        )
 
                     if not date_tag:
-                        if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
-                            debug_logs.append(
-                                f"日付タグなし: page={current_page} / レビュー名={review_item_name[:80]}"
-                            )
+                        debug_logs.append(f"日付タグなし: page={current_page} / {review_item_name[:80]}")
                         continue
 
-                    d_match = re.search(r"(\d{4})\.(\d{2})\.(\d{2})", date_tag.text)
-
-                    if not d_match:
-                        if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
-                            debug_logs.append(
-                                f"日付形式不一致: page={current_page} / date_text={date_tag.text}"
-                            )
+                    date_match = re.search(r"(\d{4}\.\d{2}\.\d{2})", date_tag.get_text(" ", strip=True))
+                    if not date_match:
+                        debug_logs.append(f"日付形式不一致: page={current_page} / {date_tag.get_text(' ', strip=True)}")
                         continue
 
-                    found_date = datetime(
-                        int(d_match.group(1)),
-                        int(d_match.group(2)),
-                        int(d_match.group(3))
-                    )
+                    found_date = datetime.strptime(date_match.group(1), "%Y.%m.%d")
 
-                    # 同じレビューを二重取得しないためのキー
-                    # 同じ日に複数レビューがある場合は、レビュー本文が違えば別件として残る
+                    # 同じレビューを二重取得しないためのキー。同じ日に複数レビューがあれば別件として残す
                     review_text = block.get_text(" ", strip=True)
-                    review_key = f"{review_href}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
+                    review_key = f"{review_item_name}_{found_date.strftime('%Y.%m.%d')}_{review_text[:100]}"
 
                     if review_key in seen_review_keys:
                         continue
@@ -493,12 +370,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     all_found_dates.append(found_date)
                     found_in_page += 1
 
-                    if "ラブラドライト" in target_name or "ラブラドライト" in review_item_name:
-                        debug_logs.append(
-                            f"取得成功: page={current_page} / {found_date.strftime('%Y.%m.%d')} / {review_item_name[:80]}"
-                        )
-
-                print(f" - {current_page}ページ目終了: {found_in_page}件の一致を確認")
+                debug_logs.append(f"{current_page}ページ目終了: {found_in_page}件一致")
                 time.sleep(0.2)
 
             print("【最終確認】")
