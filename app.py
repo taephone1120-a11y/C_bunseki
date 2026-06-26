@@ -445,16 +445,57 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             # =========================
             all_found_dates.sort(reverse=True)
 
+            # 3ヶ月以内の対象商品レビューだけを直近販売日として使う
             recent_three_month_dates = [
                 d for d in all_found_dates
                 if d >= three_months_ago
             ]
 
-            if recent_three_month_dates:
-                for i in range(min(3, len(recent_three_month_dates))):
+            # 購入者数を数値化する
+            # 「0人」→ 0
+            # 「1人」→ 1
+            # 「10人以上」→ 10
+            def parse_purchase_num(text):
+                if not isinstance(text, str):
+                    return 0
+
+                if "10人以上" in text:
+                    return 10
+
+                m = re.search(r"(\d+)", text)
+                return int(m.group(1)) if m else 0
+
+            purchase_num = parse_purchase_num(purchase_display)
+
+            # =========================
+            # 直近販売日1〜3の表示ルール
+            # =========================
+            # 購入者数0人：
+            #   すべて「ー」
+            #
+            # 購入者数1人：
+            #   直近販売日1だけ表示対象。2〜3は「ー」
+            #
+            # 購入者数2人：
+            #   直近販売日1〜2だけ表示対象。3は「ー」
+            #
+            # 購入者数3人以上：
+            #   直近販売日1〜3すべて表示対象
+            #
+            # 表示対象の欄について：
+            #   3ヶ月以内の日付が取れた欄は日付
+            #   日付が取れなかった欄は「3ヶ月以上前」
+            # =========================
+
+            recent_sales = ["ー", "ー", "ー"]
+
+            display_slots = min(purchase_num, 3)
+
+            for i in range(display_slots):
+                if i < len(recent_three_month_dates):
                     recent_sales[i] = recent_three_month_dates[i].strftime("%Y.%m.%d")
-            else:
-                recent_sales = ["3ヶ月以上前", "3ヶ月以上前", "3ヶ月以上前"]
+                else:
+                    recent_sales[i] = "3ヶ月以上前"
 
             # =========================
             # 対象商品の直近1ヶ月の評価数
