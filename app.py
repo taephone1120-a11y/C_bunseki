@@ -846,8 +846,7 @@ if start_button:
             st.session_state.raw_data = res_dict["items"]
             st.session_state.market_total = res_dict["market_total"]
             st.success(f"🎉 リサーチ完了！ 全 {len(res_dict['items'])} 件のデータを取得しました。")
-            st.write("取得データ確認:", len(st.session_state.raw_data))
-            st.dataframe(pd.DataFrame(st.session_state.raw_data))
+       
         else:
             st.error("❌ データが取得できませんでした。")
 
@@ -983,13 +982,30 @@ def parse_recent_review_count(val):
         use_container_width=True,
         hide_index=True,
         column_config={
+            "No.": st.column_config.NumberColumn(
+                "No.",
+                width="small"
+            ),
+            "商品URL": st.column_config.LinkColumn(
+                "商品URL",
+                display_text="リンクを開く",
+                width="small"
+            ),
+            "作家名": st.column_config.TextColumn(
+                "作家名",
+                width="small"
+            ),
             "商品名": st.column_config.TextColumn(
                 "商品名",
                 width="small"
             ),
+            "価格(円)": st.column_config.NumberColumn(
+                "価格(円)",
+                width="small"
+            ),
             "作品紹介文": st.column_config.TextColumn(
                 "作品紹介文",
-                width="small"
+                width="medium"
             ),
             "直近1ヶ月の評価数": st.column_config.TextColumn(
                 "直近1ヶ月の評価数",
@@ -999,9 +1015,28 @@ def parse_recent_review_count(val):
                 "作家の総評価数",
                 width="small"
             ),
-            "商品URL": st.column_config.LinkColumn(
-                "商品URL",
-                display_text="リンクを開く",
+            "購入者数": st.column_config.TextColumn(
+                "購入者数",
+                width="small"
+            ),
+            "お気に入り数": st.column_config.NumberColumn(
+                "お気に入り数",
+                width="small"
+            ),
+            "評価日1": st.column_config.TextColumn(
+                "評価日1",
+                width="small"
+            ),
+            "評価日2": st.column_config.TextColumn(
+                "評価日2",
+                width="small"
+            ),
+            "評価日3": st.column_config.TextColumn(
+                "評価日3",
+                width="small"
+            ),
+            "作家の一番初めの評価日": st.column_config.TextColumn(
+                "作家の一番初めの評価日",
                 width="small"
             ),
         }
