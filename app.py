@@ -863,6 +863,7 @@ if st.session_state.raw_data is not None:
         "一番初めの評価日": "作家の一番初めの評価日",
     })
 
+    # 必要な列がない場合の保険
     for col in ["評価日1", "評価日2", "評価日3"]:
         if col not in raw_df.columns:
             raw_df[col] = "ー"
@@ -870,12 +871,15 @@ if st.session_state.raw_data is not None:
     if "作家の総評価数" not in raw_df.columns:
         raw_df["作家の総評価数"] = 0
 
-    # 数値変換の安全処理
-    raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors='coerce').fillna(0).astype(int)
-    raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors='coerce').fillna(0).astype(int)
-    raw_df["作家の総評価数"] = pd.to_numeric(raw_df["作家の総評価数"], errors='coerce').fillna(0).astype(int)
+    if "直近1ヶ月の評価数" not in raw_df.columns:
+        raw_df["直近1ヶ月の評価数"] = "0件"
 
-    # 購入者数の数値化（フィルタリング用）
+    # 数値変換の安全処理
+    raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors="coerce").fillna(0).astype(int)
+    raw_df["お気に入り数"] = pd.to_numeric(raw_df["お気に入り数"], errors="coerce").fillna(0).astype(int)
+    raw_df["作家の総評価数"] = pd.to_numeric(raw_df["作家の総評価数"], errors="coerce").fillna(0).astype(int)
+
+    # 購入者数の数値化
     def parse_buyer_count(val):
         if not isinstance(val, str):
             return 0
@@ -884,15 +888,14 @@ if st.session_state.raw_data is not None:
         match = re.search(r"(\d+)", val)
         return int(match.group(1)) if match else 0
 
-    # 「直近1ヶ月の評価数」の数値化
-# 例：「3件」→ 3、「0件」→ 0
-def parse_recent_review_count(val):
-    if not isinstance(val, str):
-        return 0
-    match = re.search(r"(\d+)", val)
-    return int(match.group(1)) if match else 0
+    # 直近1ヶ月の評価数の数値化
+    def parse_recent_review_count(val):
+        if not isinstance(val, str):
+            return 0
+        match = re.search(r"(\d+)", val)
+        return int(match.group(1)) if match else 0
 
-    # 日付フィルタ処理のための関数
+    # 日付変換
     def parse_to_date(val):
         if not isinstance(val, str):
             return None
@@ -901,30 +904,29 @@ def parse_recent_review_count(val):
             return datetime.strptime(match.group(0), "%Y.%m.%d").date()
         return None
 
-    # 日付初期値判定用のフラグ
     is_min_date1_default = (min_date1 == past_limit_date)
     is_min_date3_default = (min_date3 == past_limit_date)
 
     def filter_row(row):
-        # 1. 価格のチェック
+        # 価格
         if not (min_price <= row["価格(円)"] <= max_price):
             return False
 
-        # 2. 購入者数のチェック
-        buyer_num = parse_buyer_count(row["購入者数"])
+        # 購入者数
+        buyer_num = parse_buyer_count(row.get("購入者数", "0人"))
         if not (min_buy <= buyer_num <= max_buy):
             return False
-        
-        # 3. 作家の総評価数のチェック
+
+        # 作家の総評価数
         if not (min_rev <= row["作家の総評価数"] <= max_rev):
             return False
 
-        # 4. 直近1ヶ月の評価数のチェック
+        # 直近1ヶ月の評価数
         recent_review_num = parse_recent_review_count(row.get("直近1ヶ月の評価数", "0件"))
         if not (min_recent_review <= recent_review_num <= max_recent_review):
             return False
-        
-        # 4. 評価日1のチェック
+
+        # 評価日1
         d1 = parse_to_date(row.get("評価日1", "ー"))
         if d1:
             if not (min_date1 <= d1 <= max_date1):
@@ -932,8 +934,8 @@ def parse_recent_review_count(val):
         else:
             if not is_min_date1_default:
                 return False
-            
-        # 5. 評価日3のチェック
+
+        # 評価日3
         d3 = parse_to_date(row.get("評価日3", "ー"))
         if d3:
             if not (min_date3 <= d3 <= max_date3):
@@ -941,19 +943,17 @@ def parse_recent_review_count(val):
         else:
             if not is_min_date3_default:
                 return False
-            
+
         return True
 
-    # フィルタリングの適用
+    # フィルター適用
     mask = raw_df.apply(filter_row, axis=1)
     filtered_df = raw_df[mask].copy()
 
     if not filtered_df.empty:
         filtered_df["No."] = range(1, len(filtered_df) + 1)
 
-    # =========================
-    # 表示・Excel出力用に列順を整える
-    # =========================
+    # 列順を整える
     preferred_columns = [
         "No.",
         "商品URL",
@@ -974,9 +974,9 @@ def parse_recent_review_count(val):
     existing_columns = [col for col in preferred_columns if col in filtered_df.columns]
     other_columns = [col for col in filtered_df.columns if col not in existing_columns]
     filtered_df = filtered_df[existing_columns + other_columns]
-        
+
     st.markdown(f"**現在の表示件数:** {len(filtered_df)} 件 / 全体 {len(raw_df)} 件")
-    
+
     st.dataframe(
         filtered_df,
         use_container_width=True,
@@ -988,7 +988,7 @@ def parse_recent_review_count(val):
             ),
             "商品URL": st.column_config.LinkColumn(
                 "商品URL",
-                display_text="リンクを開く",
+                display_text="商品ページ",
                 width="small"
             ),
             "作家名": st.column_config.TextColumn(
@@ -1041,7 +1041,7 @@ def parse_recent_review_count(val):
             ),
         }
     )
-    
+
     excel_data = convert_df_to_excel(filtered_df)
 
     st.download_button(
