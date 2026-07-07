@@ -78,20 +78,21 @@ if mode == "キーワード検索":
 else:
     target_url = st.sidebar.text_input("🔗 Creemaの一覧URLを入力", value="")
 
-max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=1000, value=10, step=10)
+max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=10, step=10)
 
 # 取得速度の設定
 speed_mode = st.sidebar.selectbox(
     "⚡ 取得スピード",
-    ("高速（おすすめ）", "標準（正確重視）", "軽量（最速）"),
+    ("安定（弾かれ対策）", "高速（おすすめ）", "標準（正確重視）", "軽量（最速）"),
     index=0,
-    help="高速はレビュー探索ページ数を抑えて時短します。標準は従来に近い精度、軽量はさらに速い代わりに古い評価日の探索が浅くなります。"
+    help="弾かれ対策は並列数を抑えて再アクセスを増やします。高速は時短、標準は従来に近い精度、軽量はさらに速い代わりに古い評価日の探索が浅くなります。"
 )
 
 SPEED_CONFIG = {
-    "高速（おすすめ）": {"review_pages": 20, "workers_large": 8, "workers_small": 12, "sleep": 0.05},
-    "標準（正確重視）": {"review_pages": 80, "workers_large": 4, "workers_small": 8, "sleep": 0.2},
-    "軽量（最速）": {"review_pages": 8, "workers_large": 12, "workers_small": 16, "sleep": 0.0},
+    "安定（弾かれ対策）": {"review_pages": 20, "workers_large": 3, "workers_small": 4, "sleep": 0.35},
+    "高速（おすすめ）": {"review_pages": 20, "workers_large": 6, "workers_small": 8, "sleep": 0.12},
+    "標準（正確重視）": {"review_pages": 80, "workers_large": 3, "workers_small": 5, "sleep": 0.25},
+    "軽量（最速）": {"review_pages": 8, "workers_large": 8, "workers_small": 10, "sleep": 0.05},
 }
 CURRENT_SPEED = SPEED_CONFIG[speed_mode]
 
@@ -106,6 +107,26 @@ skip_line_notify = st.sidebar.checkbox(
     value=False,
     help="ボタンを押しても開始が遅い/始まらない時の切り分け用です。"
 )
+
+st.sidebar.markdown("**🔁 通信リトライ設定**")
+retry_count = st.sidebar.number_input(
+    "弾かれた時の再アクセス回数",
+    min_value=0,
+    max_value=10,
+    value=4,
+    step=1,
+    help="403/429/500系・タイムアウト時に、待ってから再アクセスします。"
+)
+retry_base_wait = st.sidebar.number_input(
+    "リトライ待機秒",
+    min_value=0.2,
+    max_value=20.0,
+    value=2.0,
+    step=0.5,
+    help="失敗するたびに、この秒数を基準に少しずつ長く待ちます。"
+)
+
+RETRY_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
 
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
@@ -240,8 +261,72 @@ def get_fast_session():
         _thread_local.session = session
     return _thread_local.session
 
-def fast_get(url, headers=None, timeout=10):
-    return get_fast_session().get(url, headers=headers, timeout=timeout)
+def fast_get(url, headers=None, timeout=10, retry_label="通信"):
+    """
+    Creema側に一時的に弾かれた/混み合った時の再アクセス付きGET。
+    対象: 403, 429, 500系, タイムアウトなど。
+    404など恒久的な失敗は基本リトライしない。
+    """
+    session = get_fast_session()
+    last_error = None
+    max_attempts = int(retry_count) + 1
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = session.get(url, headers=headers, timeout=timeout)
+
+            # 成功、またはリトライ対象外のHTTPステータスならそのまま返す
+            if res.status_code == 200 or res.status_code not in RETRY_STATUS_CODES:
+                if attempt > 1 and res.status_code == 200:
+                    diag_count("リトライ成功")
+                    diag_log(retry_label, f"リトライ成功 attempt={attempt} status=200", url, "INFO")
+                elif attempt > 1:
+                    diag_count(f"リトライ後_HTTP_{res.status_code}")
+                    diag_log(retry_label, f"リトライ後も対象外status={res.status_code} attempt={attempt}", url, "WARN")
+                return res
+
+            # リトライ対象のHTTPステータス
+            last_error = f"HTTP {res.status_code}"
+            diag_count(f"HTTP_{res.status_code}")
+
+            if attempt < max_attempts:
+                wait_sec = float(retry_base_wait) * attempt + random.uniform(0.2, 1.2)
+                diag_count("リトライ実行")
+                diag_log(
+                    retry_label,
+                    f"弾かれ/一時失敗 status={res.status_code} → {wait_sec:.1f}秒後に再アクセス attempt={attempt}/{max_attempts}",
+                    url,
+                    "WARN"
+                )
+                time.sleep(wait_sec)
+                continue
+
+            diag_count("リトライ上限到達")
+            diag_log(retry_label, f"リトライ上限到達 status={res.status_code} attempts={max_attempts}", url, "ERROR")
+            return res
+
+        except requests.exceptions.RequestException as e:
+            last_error = f"{type(e).__name__}: {e}"
+            diag_count(f"通信例外_{type(e).__name__}")
+
+            if attempt < max_attempts:
+                wait_sec = float(retry_base_wait) * attempt + random.uniform(0.2, 1.2)
+                diag_count("リトライ実行")
+                diag_log(
+                    retry_label,
+                    f"通信例外 {type(e).__name__} → {wait_sec:.1f}秒後に再アクセス attempt={attempt}/{max_attempts}",
+                    url,
+                    "WARN"
+                )
+                time.sleep(wait_sec)
+                continue
+
+            diag_count("リトライ上限到達")
+            diag_log(retry_label, f"通信例外でリトライ上限到達: {last_error}", url, "ERROR")
+            raise
+
+    # 通常ここには来ないが、型安全のため最後に1回アクセス
+    return session.get(url, headers=headers, timeout=timeout)
 
 def cached_fast_get(url, headers=None, timeout=10):
     """レビューページなど、同じURLを何度も読む可能性があるページをメモリに保存する。"""
@@ -252,7 +337,7 @@ def cached_fast_get(url, headers=None, timeout=10):
         status_code, final_url, content = cached
         return SimpleNamespace(status_code=status_code, url=final_url, content=content)
 
-    res = fast_get(url, headers=headers, timeout=timeout)
+    res = fast_get(url, headers=headers, timeout=timeout, retry_label="レビューページ")
 
     if res.status_code == 200:
         with _cache_lock:
@@ -387,10 +472,11 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
     three_months_ago = datetime.now() - timedelta(days=90)
 
     try:
-        res = fast_get(link, headers=headers, timeout=10)
+        res = fast_get(link, headers=headers, timeout=10, retry_label="詳細ページ")
         if res.status_code != 200:
             diag_count("詳細ページ_HTTP失敗")
-            diag_log("詳細ページ", f"商品詳細ページの取得に失敗 status={res.status_code}", link, "ERROR")
+            diag_count(f"詳細ページ_HTTP_{res.status_code}")
+            diag_log("詳細ページ", f"商品詳細ページの取得に失敗 status={res.status_code} ※リトライ後", link, "ERROR")
             return None
 
         soup = BeautifulSoup(res.content, "html.parser")
@@ -530,7 +616,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             # /creator/数字/rating/sale のまま page=2 を付けると、
             # page が消えることがあるので、先に正規URLへ変換する
             try:
-                canonical_res = fast_get(base_rating_url, headers=headers, timeout=10)
+                canonical_res = fast_get(base_rating_url, headers=headers, timeout=10, retry_label="レビューページ正規URL")
                 if canonical_res.status_code == 200:
                     canonical_rating_url = canonical_res.url.split("?")[0]
                 else:
@@ -817,7 +903,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 # =============================================
 def scrape_creema_fast(start_url, max_num):
     reset_diagnostics()
-    diag_log("開始", f"リサーチ開始: 上限={max_num}件 / 速度={speed_mode}", start_url, "INFO")
+    diag_log("開始", f"リサーチ開始: 上限={max_num}件 / 速度={speed_mode} / リトライ={retry_count}回 / 待機={retry_base_wait}秒", start_url, "INFO")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
@@ -840,7 +926,7 @@ def scrape_creema_fast(start_url, max_num):
         )
 
         try:
-            response = fast_get(current_url, headers=headers, timeout=10)
+            response = fast_get(current_url, headers=headers, timeout=10, retry_label="一覧ページ")
             diag_count("一覧ページ_アクセス")
             diag_log("一覧ページ", f"{page_count}ページ目 status={response.status_code} / bytes={len(response.content)}", current_url, "INFO")
 
