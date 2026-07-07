@@ -74,7 +74,7 @@ if mode == "キーワード検索":
 else:
     target_url = st.sidebar.text_input("🔗 Creemaの一覧URLを入力", value="")
 
-max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=10, step=10)
+max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=1000, value=10, step=10)
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # フィルターエリア
