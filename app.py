@@ -6,6 +6,10 @@ import requests
 import json
 import textwrap
 import math
+import threading
+import traceback
+from collections import Counter
+from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -74,7 +78,35 @@ if mode == "キーワード検索":
 else:
     target_url = st.sidebar.text_input("🔗 Creemaの一覧URLを入力", value="")
 
-max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=1000, value=10, step=10)
+max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=500, value=10, step=10)
+
+# 取得速度の設定
+speed_mode = st.sidebar.selectbox(
+    "⚡ 取得スピード",
+    ("高速（おすすめ）", "標準（正確重視）", "軽量（最速）"),
+    index=0,
+    help="高速はレビュー探索ページ数を抑えて時短します。標準は従来に近い精度、軽量はさらに速い代わりに古い評価日の探索が浅くなります。"
+)
+
+SPEED_CONFIG = {
+    "高速（おすすめ）": {"review_pages": 20, "workers_large": 8, "workers_small": 12, "sleep": 0.05},
+    "標準（正確重視）": {"review_pages": 80, "workers_large": 4, "workers_small": 8, "sleep": 0.2},
+    "軽量（最速）": {"review_pages": 8, "workers_large": 12, "workers_small": 16, "sleep": 0.0},
+}
+CURRENT_SPEED = SPEED_CONFIG[speed_mode]
+
+show_diagnostics = st.sidebar.checkbox(
+    "🩺 診断ログを表示する",
+    value=True,
+    help="途中で止まった原因、通信失敗、HTML変更、詳細解析失敗などを画面に表示します。"
+)
+
+skip_line_notify = st.sidebar.checkbox(
+    "LINE通知を送らない（テスト用）",
+    value=False,
+    help="ボタンを押しても開始が遅い/始まらない時の切り分け用です。"
+)
+
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # フィルターエリア
@@ -153,6 +185,80 @@ with col_recent2:
         value=99999,
         label_visibility="collapsed"
     )
+
+# =============================================
+#   高速通信用：Session使い回し
+# =============================================
+_thread_local = threading.local()
+_cache_lock = threading.Lock()
+_rating_page_cache = {}
+
+# =============================================
+#   🩺 診断ログ：止まった原因を見える化
+# =============================================
+_diag_lock = threading.Lock()
+_diag_logs = []
+_diag_stats = Counter()
+
+def reset_diagnostics():
+    global _diag_logs, _diag_stats
+    with _diag_lock:
+        _diag_logs = []
+        _diag_stats = Counter()
+
+def diag_log(stage, message, url="", level="INFO"):
+    """画面表示用・ターミナル確認用の診断ログ。スレッドからも呼べるようにロックする。"""
+    entry = {
+        "時刻": datetime.now().strftime("%H:%M:%S"),
+        "レベル": level,
+        "工程": stage,
+        "内容": str(message),
+        "URL": str(url)[:300],
+    }
+    with _diag_lock:
+        _diag_logs.append(entry)
+        if len(_diag_logs) > 1000:
+            del _diag_logs[:-1000]
+        _diag_stats[f"{level}:{stage}"] += 1
+    print(f"[{entry['時刻']}] [{level}] {stage}: {message} {url}")
+
+def diag_count(key, amount=1):
+    with _diag_lock:
+        _diag_stats[key] += amount
+
+def get_diagnostics():
+    with _diag_lock:
+        return list(_diag_logs), dict(_diag_stats)
+
+def get_fast_session():
+    """スレッドごとにrequests.Sessionを使い回して、接続確立の時間を減らす。"""
+    if not hasattr(_thread_local, "session"):
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=50)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        _thread_local.session = session
+    return _thread_local.session
+
+def fast_get(url, headers=None, timeout=10):
+    return get_fast_session().get(url, headers=headers, timeout=timeout)
+
+def cached_fast_get(url, headers=None, timeout=10):
+    """レビューページなど、同じURLを何度も読む可能性があるページをメモリに保存する。"""
+    with _cache_lock:
+        cached = _rating_page_cache.get(url)
+
+    if cached is not None:
+        status_code, final_url, content = cached
+        return SimpleNamespace(status_code=status_code, url=final_url, content=content)
+
+    res = fast_get(url, headers=headers, timeout=timeout)
+
+    if res.status_code == 200:
+        with _cache_lock:
+            _rating_page_cache[url] = (res.status_code, res.url, res.content)
+
+    return res
 
 # =============================================
 #   📲 LINE通知関数
@@ -281,8 +387,10 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
     three_months_ago = datetime.now() - timedelta(days=90)
 
     try:
-        res = requests.get(link, headers=headers, timeout=10)
+        res = fast_get(link, headers=headers, timeout=10)
         if res.status_code != 200:
+            diag_count("詳細ページ_HTTP失敗")
+            diag_log("詳細ページ", f"商品詳細ページの取得に失敗 status={res.status_code}", link, "ERROR")
             return None
 
         soup = BeautifulSoup(res.content, "html.parser")
@@ -422,7 +530,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             # /creator/数字/rating/sale のまま page=2 を付けると、
             # page が消えることがあるので、先に正規URLへ変換する
             try:
-                canonical_res = requests.get(base_rating_url, headers=headers, timeout=10)
+                canonical_res = fast_get(base_rating_url, headers=headers, timeout=10)
                 if canonical_res.status_code == 200:
                     canonical_rating_url = canonical_res.url.split("?")[0]
                 else:
@@ -450,16 +558,18 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             #   レビュー日付が3ヶ月より古くなるページまで見て、
             #   その中で見つかった対象商品の直近3回分の日付を入れる
             # =========================
-            max_review_pages = 80
+            max_review_pages = CURRENT_SPEED["review_pages"]
 
             for current_page in range(1, max_review_pages + 1):
                 page_url = f"{canonical_rating_url}?page={current_page}"
                 print(f" - 取得URL: {page_url}")
 
-                r_res = requests.get(page_url, headers=headers, timeout=10)
+                r_res = cached_fast_get(page_url, headers=headers, timeout=10)
                 print(" - 最終URL:", r_res.url)
 
                 if r_res.status_code != 200:
+                    diag_count("レビューページ_HTTP失敗")
+                    diag_log("レビューページ", f"{current_page}ページ目 status={r_res.status_code} のためこの商品のレビュー探索を終了", page_url, "WARN")
                     print(f" - {current_page}ページ目: ステータスコード {r_res.status_code} のため終了")
                     break
 
@@ -471,6 +581,8 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     blocks = r_soup.select(".p-creator-rating-rating__content")
 
                 if not blocks:
+                    diag_count("レビューブロック0件")
+                    diag_log("レビューページ", f"{current_page}ページ目でレビューブロックが0件。Creema側HTML変更/該当レビューなしの可能性", page_url, "WARN")
                     print(f" - {current_page}ページ目: レビューブロックが0件のため終了")
                     break
 
@@ -566,7 +678,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                         print(" - このページはすべて3ヶ月より古いため、探索終了")
                         break
 
-                time.sleep(0.2)
+                time.sleep(CURRENT_SPEED["sleep"])
 
             # =========================
             # 評価日1〜3
@@ -646,7 +758,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     last_page_url = f"{canonical_rating_url}?page={last_page}"
                     print("作家の一番初めの評価日チェックURL:", last_page_url)
 
-                    last_res = requests.get(last_page_url, headers=headers, timeout=10)
+                    last_res = cached_fast_get(last_page_url, headers=headers, timeout=10)
                     print("作家の一番初めの評価日チェック 最終URL:", last_res.url)
 
                     if last_res.status_code == 200:
@@ -666,8 +778,15 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                             first_review_date = oldest_date.strftime("%Y.%m.%d")
 
             except Exception as e:
+                diag_count("初回評価日_取得失敗")
+                diag_log("初回評価日", f"取得エラー: {type(e).__name__}: {e}", canonical_rating_url, "WARN")
                 print("作家の一番初めの評価日取得エラー:", e)
 
+        else:
+            diag_count("レビューページリンクなし")
+            diag_log("レビューページ", "商品詳細内に /rating/sale のリンクが見つかりません", link, "WARN")
+
+        diag_count("詳細解析_成功")
         return {
             "No.": 0,
             "商品URL": link,
@@ -687,13 +806,18 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         }
 
     except Exception as e:
+        diag_count("詳細解析_例外")
+        diag_log("詳細解析", f"例外: {type(e).__name__}: {e}", link, "ERROR")
         print("詳細解析エラー:", e)
+        print(traceback.format_exc())
         return None
 
 # =============================================
 #   メインのスクレイピング制御関数
 # =============================================
 def scrape_creema_fast(start_url, max_num):
+    reset_diagnostics()
+    diag_log("開始", f"リサーチ開始: 上限={max_num}件 / 速度={speed_mode}", start_url, "INFO")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
@@ -716,9 +840,12 @@ def scrape_creema_fast(start_url, max_num):
         )
 
         try:
-            response = requests.get(current_url, headers=headers, timeout=10)
+            response = fast_get(current_url, headers=headers, timeout=10)
+            diag_count("一覧ページ_アクセス")
+            diag_log("一覧ページ", f"{page_count}ページ目 status={response.status_code} / bytes={len(response.content)}", current_url, "INFO")
 
             if response.status_code != 200:
+                diag_log("一覧ページ", f"status={response.status_code} のため一覧巡回を終了", current_url, "ERROR")
                 break
 
             soup = BeautifulSoup(response.content, "html.parser")
@@ -733,7 +860,11 @@ def scrape_creema_fast(start_url, max_num):
             items = soup.select("article.c-item-article")
 
             if not items:
+                diag_log("一覧ページ", "商品ブロック article.c-item-article が0件。URL違い・HTML変更・アクセス制限の可能性", current_url, "ERROR")
                 break
+
+            before_count = len(all_item_elements_data)
+            duplicate_count = 0
                 
             for item in items:
                 if len(all_item_elements_data) >= max_num:
@@ -757,6 +888,7 @@ def scrape_creema_fast(start_url, max_num):
 
                 # URLの重複を防ぐ
                 if link in seen_urls:
+                    duplicate_count += 1
                     continue
 
                 seen_urls.add(link)
@@ -776,6 +908,12 @@ def scrape_creema_fast(start_url, max_num):
                     "price": price
                 })
             
+            added_count = len(all_item_elements_data) - before_count
+            diag_count("一覧ページ_商品リンク追加", added_count)
+            if duplicate_count:
+                diag_count("一覧ページ_重複URLスキップ", duplicate_count)
+            diag_log("一覧ページ", f"{page_count}ページ目: 商品候補 {len(items)}件 / 追加 {added_count}件 / 重複スキップ {duplicate_count}件 / 累計 {len(all_item_elements_data)}件", current_url, "INFO")
+
             next_tag = soup.select_one("a.c-pagination__next")
 
             if next_tag and "href" in next_tag.attrs:
@@ -787,23 +925,29 @@ def scrape_creema_fast(start_url, max_num):
                     current_url = "https://www.creema.jp" + next_href
 
                 page_count += 1
-                time.sleep(0.3)
+                time.sleep(CURRENT_SPEED["sleep"])
             else:
+                diag_log("一覧ページ", "次ページボタン a.c-pagination__next が見つからないため一覧巡回を終了", current_url, "WARN")
                 current_url = None
 
         except Exception as e:
+            diag_log("一覧ページ", f"例外: {type(e).__name__}: {e}", current_url, "ERROR")
             print("一覧ページ取得エラー:", e)
+            print(traceback.format_exc())
             break
             
     page_status.empty()
     total_found = len(all_item_elements_data)
-    if total_found == 0: return None
+    diag_log("一覧ページ", f"商品リンク収集完了: {total_found}件", start_url, "INFO")
+    if total_found == 0:
+        diag_log("終了", "商品リンクが0件のため終了。検索キーワード/URL/HTML変更/アクセス制限を確認してください", start_url, "ERROR")
+        return {"items": [], "market_total": detected_market_total, "diagnostics": get_diagnostics()}
         
     status_text = st.empty()
     progress_bar = st.progress(0)
     scraped_data = []
     
-    max_workers = 4 if total_found > 100 else 8
+    max_workers = CURRENT_SPEED["workers_large"] if total_found > 100 else CURRENT_SPEED["workers_small"]
     current_idx = 0
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -812,46 +956,94 @@ def scrape_creema_fast(start_url, max_num):
             for item_data in all_item_elements_data
         }
         for future in as_completed(future_to_item):
-            result = future.result()
+            item_data = future_to_item[future]
+            try:
+                result = future.result()
+            except Exception as e:
+                result = None
+                diag_count("Future_例外")
+                diag_log("詳細解析", f"future.result()で例外: {type(e).__name__}: {e}", item_data.get("link", ""), "ERROR")
+                print(traceback.format_exc())
             current_idx += 1
-            if result: scraped_data.append(result)
+            if result:
+                scraped_data.append(result)
+            else:
+                diag_count("詳細解析_結果なし")
             progress_bar.progress(min(current_idx / total_found, 1.0))
-            status_text.text(f"⏳ 大規模解析中... 完了: {current_idx} / {total_found} 件")
+            status_text.text(f"⏳ 解析中（{speed_mode}）... 完了: {current_idx} / {total_found} 件 / 成功: {len(scraped_data)} 件")
                 
     progress_bar.empty()
     status_text.empty()
     
+    diag_log("詳細解析", f"詳細解析完了: 成功 {len(scraped_data)}件 / 失敗 {total_found - len(scraped_data)}件", start_url, "INFO")
     if scraped_data:
         for i, item in enumerate(scraped_data, 1): item["No."] = i
-        return {"items": scraped_data, "market_total": detected_market_total}
-    return None
+        return {"items": scraped_data, "market_total": detected_market_total, "diagnostics": get_diagnostics()}
+    diag_log("終了", "商品リンクは取れたが、詳細解析に成功した商品が0件でした", start_url, "ERROR")
+    return {"items": [], "market_total": detected_market_total, "diagnostics": get_diagnostics()}
 
 # =============================================
 #    ⚙️ アプリ実行処理エリア
 # =============================================
 if "raw_data" not in st.session_state: st.session_state.raw_data = None
 if "market_total" not in st.session_state: st.session_state.market_total = 0
+if "diagnostics" not in st.session_state: st.session_state.diagnostics = None
 
 if start_button:
     if (mode == "一覧URL直貼り" and not target_url) or (mode == "キーワード検索" and not search_keyword):
         st.error("⚠️ 条件を入力してください。")
     else:
         cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
-        send_line_notification(cond_text, max_items)
+        st.session_state.diagnostics = None
+
+        if not skip_line_notify:
+            try:
+                send_line_notification(cond_text, max_items)
+            except Exception as e:
+                # LINE通知で止まらないようにする
+                st.warning(f"LINE通知でエラーが出ましたが、リサーチは続行します: {type(e).__name__}: {e}")
         
         with st.spinner("🔄 Creemaのデータを徹底解析中..."):
             res_dict = scrape_creema_fast(target_url, max_items)
-            
-        if res_dict:
-            st.session_state.raw_data = res_dict["items"]
-            st.session_state.market_total = res_dict["market_total"]
-            st.success(f"🎉 リサーチ完了！ 全 {len(res_dict['items'])} 件のデータを取得しました。")
+
+        if res_dict is not None:
+            st.session_state.raw_data = res_dict.get("items", [])
+            st.session_state.market_total = res_dict.get("market_total", 0)
+            st.session_state.diagnostics = res_dict.get("diagnostics")
+
+            if len(st.session_state.raw_data) > 0:
+                st.success(f"🎉 リサーチ完了！ 全 {len(st.session_state.raw_data)} 件のデータを取得しました。")
+            else:
+                st.error("❌ データが0件でした。下の診断ログで原因を確認してください。")
        
         else:
-            st.error("❌ データが取得できませんでした。")
+            st.error("❌ データが取得できませんでした。下の診断ログを確認してください。")
+            st.session_state.diagnostics = get_diagnostics()
+
+# --- 診断ログ表示 ---
+if show_diagnostics and st.session_state.get("diagnostics"):
+    logs, stats = st.session_state.diagnostics
+
+    st.markdown("### 🩺 診断ログ")
+
+    if stats:
+        stats_df = pd.DataFrame([{"項目": k, "回数": v} for k, v in sorted(stats.items())])
+        st.dataframe(stats_df, use_container_width=True, hide_index=True)
+
+    if logs:
+        log_df = pd.DataFrame(logs)
+        st.dataframe(log_df, use_container_width=True, hide_index=True)
+
+        csv_data = log_df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            label="🩺 診断ログをCSVでダウンロード",
+            data=csv_data,
+            file_name=f"creema_diagnostic_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
 
 # --- 画面表示処理 ---
-if st.session_state.raw_data is not None:
+if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
     raw_df = pd.DataFrame(st.session_state.raw_data)
 
     # 古い取得結果が session_state に残っている場合の保険
