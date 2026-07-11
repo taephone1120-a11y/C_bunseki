@@ -116,12 +116,12 @@ with col_price_tilde:
 with col_price2:
     max_price = st.number_input("価格（最大）", min_value=0, value=99999, label_visibility="collapsed")
 
-# 3. 直近1ヶ月の評価数
-st.sidebar.markdown("**直近1ヶ月の評価数**")
+# 3. その商品の直近1ヶ月の評価数
+st.sidebar.markdown("**その商品の直近1ヶ月の評価数**")
 col_recent1, col_recent_tilde, col_recent2 = st.sidebar.columns([4, 1, 4])
 with col_recent1:
     min_recent_review = st.number_input(
-        "直近1ヶ月の評価数（最小）",
+        "その商品の直近1ヶ月の評価数（最小）",
         min_value=0,
         value=0,
         label_visibility="collapsed"
@@ -130,7 +130,7 @@ with col_recent_tilde:
     st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
 with col_recent2:
     max_recent_review = st.number_input(
-        "直近1ヶ月の評価数（最大）",
+        "その商品の直近1ヶ月の評価数（最大）",
         min_value=0,
         value=99999,
         label_visibility="collapsed"
@@ -613,7 +613,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             # =========================
             # 対象商品のレビュー日を取得
             # =========================
-            # 直近1ヶ月の評価数：
+            # その商品の直近1ヶ月の評価数：
             #   対象商品のレビューのうち、直近30日以内の件数
             #
             # 評価日1〜3：
@@ -820,7 +820,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     recent_sales[i] = "3ヶ月以上前"
 
             # =========================
-            # 対象商品の直近1ヶ月の評価数
+            # 対象商品のその商品の直近1ヶ月の評価数
             # =========================
             recent_month_count = sum(
                 1 for d in all_found_dates
@@ -876,7 +876,7 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             "商品名": title,
             "価格(円)": price,
             "作品紹介文": description_text,
-            "直近1ヶ月の評価数": recent_review_display,
+            "その商品の直近1ヶ月の評価数": recent_review_display,
             "作家の総評価数": review,
             "お気に入り数": favorite,
             "購入者数": purchase_display,
@@ -1270,8 +1270,8 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
     if "作家の総評価数" not in raw_df.columns:
         raw_df["作家の総評価数"] = 0
 
-    if "直近1ヶ月の評価数" not in raw_df.columns:
-        raw_df["直近1ヶ月の評価数"] = "0件"
+    if "その商品の直近1ヶ月の評価数" not in raw_df.columns:
+        raw_df["その商品の直近1ヶ月の評価数"] = "0件"
 
     # 数値変換の安全処理
     raw_df["価格(円)"] = pd.to_numeric(raw_df["価格(円)"], errors="coerce").fillna(0).astype(int)
@@ -1287,7 +1287,7 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
         match = re.search(r"(\d+)", val)
         return int(match.group(1)) if match else 0
 
-    # 直近1ヶ月の評価数の数値化
+    # その商品の直近1ヶ月の評価数の数値化
     def parse_recent_review_count(val):
         # 表示上は「42件」のような文字列で入ってくることがあるが、
         # 並び替えを正しくするため、内部では必ず数値として扱う。
@@ -1298,9 +1298,9 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
         match = re.search(r"(\d+)", str(val))
         return int(match.group(1)) if match else 0
 
-    # 「直近1ヶ月の評価数」は文字列のままだと、42件が4件の近くに並ぶなど
+    # 「その商品の直近1ヶ月の評価数」は文字列のままだと、42件が4件の近くに並ぶなど
     # 文字列順ソートになってしまうため、表示前に数値型へ変換する。
-    raw_df["直近1ヶ月の評価数"] = raw_df["直近1ヶ月の評価数"].apply(parse_recent_review_count).astype(int)
+    raw_df["その商品の直近1ヶ月の評価数"] = raw_df["その商品の直近1ヶ月の評価数"].apply(parse_recent_review_count).astype(int)
 
     # 日付変換
     def parse_to_date(val):
@@ -1317,8 +1317,8 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
         if not (min_price <= row["価格(円)"] <= max_price):
             return False
 
-        # 直近1ヶ月の評価数
-        recent_review_num = parse_recent_review_count(row.get("直近1ヶ月の評価数", "0件"))
+        # その商品の直近1ヶ月の評価数
+        recent_review_num = parse_recent_review_count(row.get("その商品の直近1ヶ月の評価数", "0件"))
         if not (min_recent_review <= recent_review_num <= max_recent_review):
             return False
 
@@ -1346,7 +1346,7 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
         "商品名",
         "価格(円)",
         "作品紹介文",
-        "直近1ヶ月の評価数",
+        "その商品の直近1ヶ月の評価数",
         "作家の総評価数",
         "購入者数",
         "お気に入り数",
@@ -1392,8 +1392,8 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
                 "作品紹介文",
                 width="medium"
             ),
-            "直近1ヶ月の評価数": st.column_config.NumberColumn(
-                "直近1ヶ月の評価数",
+            "その商品の直近1ヶ月の評価数": st.column_config.NumberColumn(
+                "その商品の直近1ヶ月の評価数",
                 help="数値として並び替えできます",
                 format="%d 件",
                 width="small"
