@@ -1370,10 +1370,18 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
 
     # 直近1ヶ月の評価数の数値化
     def parse_recent_review_count(val):
-        if not isinstance(val, str):
+        # 表示上は「42件」のような文字列で入ってくることがあるが、
+        # 並び替えを正しくするため、内部では必ず数値として扱う。
+        if pd.isna(val):
             return 0
-        match = re.search(r"(\d+)", val)
+        if isinstance(val, (int, float, np.integer, np.floating)):
+            return int(val)
+        match = re.search(r"(\d+)", str(val))
         return int(match.group(1)) if match else 0
+
+    # 「直近1ヶ月の評価数」は文字列のままだと、42件が4件の近くに並ぶなど
+    # 文字列順ソートになってしまうため、表示前に数値型へ変換する。
+    raw_df["直近1ヶ月の評価数"] = raw_df["直近1ヶ月の評価数"].apply(parse_recent_review_count).astype(int)
 
     # 日付変換
     def parse_to_date(val):
@@ -1487,8 +1495,10 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
                 "作品紹介文",
                 width="medium"
             ),
-            "直近1ヶ月の評価数": st.column_config.TextColumn(
+            "直近1ヶ月の評価数": st.column_config.NumberColumn(
                 "直近1ヶ月の評価数",
+                help="数値として並び替えできます",
+                format="%d 件",
                 width="small"
             ),
             "作家の総評価数": st.column_config.NumberColumn(
