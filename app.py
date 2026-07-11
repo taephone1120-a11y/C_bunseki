@@ -129,6 +129,105 @@ retry_base_wait = st.sidebar.number_input(
 RETRY_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
 
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
+import io
+import re
+import time
+import random
+import requests
+import json
+import textwrap
+import math
+import threading
+import traceback
+from collections import Counter
+from types import SimpleNamespace
+import numpy as np
+import pandas as pd
+import streamlit as st
+from bs4 import BeautifulSoup
+from urllib.parse import quote, urljoin, urlparse, parse_qs, urlencode, urlunparse
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# =============================================
+#   デザインとヘッダー設定
+# =============================================
+st.set_page_config(page_title="Creema市場リサーチツール", page_icon="💎", layout="wide")
+
+st.markdown("""
+    <style>
+    .block-container { padding-top: 2.5rem !important; padding-bottom: 2rem !important; }
+    html, body, [data-testid="stMarkdownContainer"] p, .stMarkdown p {
+        font-size: 14px !important;
+        font-family: "Meiryo", "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.5 !important;
+    }
+    h1 { font-size: 28px !important; font-weight: 700 !important; color: #111111 !important; margin: 0 !important; }
+    div[data-testid="stSidebarUserContent"] { padding-top: 1rem !important; }
+    div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h5 { font-size: 13.5px !important; margin-top: 12px !important; margin-bottom: 5px !important; color: #111111 !important; font-weight: 600 !important; }
+    
+    .stTextInput input, .stNumberInput input, .stDateInput input, div[data-testid="stSelectbox"] div { 
+        padding: 4px 8px !important; 
+        min-height: 32px !important; 
+        height: 32px !important; 
+        font-size: 13px !important; 
+    }
+    
+    div[data-testid="stNumberInput"] button {
+        display: none !important;
+    }
+    div[data-testid="stNumberInput"] div[data-baseline="true"] {
+        padding-right: 8px !important;
+    }
+    
+    .metric-card {
+        background-color: #f8f9fa;
+        border-left: 5px solid #1f497d;
+        padding: 15px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("💎 Creema市場リサーチツール")
+st.markdown('<hr style="border: none; border-top: 1px solid #e6e6e6; margin-top: 15px; margin-bottom: 25px; padding: 0;">', unsafe_allow_html=True)
+
+# =============================================
+#   サイドバー：設定エリア ＆ フィルターエリア
+# =============================================
+st.sidebar.header("⚙️ 取得条件設定")
+mode = st.sidebar.radio("収集モードを選択してください", ("キーワード検索", "一覧URL直貼り"))
+
+search_keyword = ""
+target_url = ""
+
+if mode == "キーワード検索":
+    search_keyword = st.sidebar.text_input("🔍 検索キーワードを入力", value="")
+    encoded_keyword = quote(search_keyword)
+    target_url = f"https://www.creema.jp/listing?q={encoded_keyword}&active=pc_listing-form"
+else:
+    target_url = st.sidebar.text_input("🔗 Creemaの一覧URLを入力", value="")
+
+max_items = st.sidebar.number_input("🔢 取得する商品件数", min_value=1, max_value=1000, value=10, step=10)
+
+# 取得速度は「高速（おすすめ）」に固定（画面には表示しない）
+speed_mode = "高速（おすすめ）"
+
+SPEED_CONFIG = {
+    "高速（おすすめ）": {"review_pages": 20, "workers_large": 6, "workers_small": 8, "sleep": 0.12},
+}
+CURRENT_SPEED = SPEED_CONFIG[speed_mode]
+
+# 診断ログと通信リトライ設定は内部処理用に残し、画面には表示しない
+show_diagnostics = False
+skip_line_notify = False
+retry_count = 4
+retry_base_wait = 2.0
+
+RETRY_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
+
+start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
 
 # フィルターエリア
 st.sidebar.markdown('---')
@@ -148,37 +247,8 @@ with col_price_tilde:
 with col_price2:
     max_price = st.number_input("価格（最大）", min_value=0, value=99999, label_visibility="collapsed")
 
-# 2. 購入者数
-st.sidebar.markdown("**購入者数**")
-col_buy1, col_buy_tilde, col_buy2 = st.sidebar.columns([4, 1, 4])
-with col_buy1:
-    min_buy = st.number_input("購入者数（最小）", min_value=0, value=0, label_visibility="collapsed")
-with col_buy_tilde:
-    st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
-with col_buy2:
-    max_buy = st.number_input("購入者数（最大）", min_value=0, value=99999, label_visibility="collapsed")
+# 2. 作家の総評価数
 
-# 3. 評価日１
-st.sidebar.markdown("**評価日１**")
-col_d1_1, col_d1_tilde, col_d1_2 = st.sidebar.columns([4, 1, 4])
-with col_d1_1:
-    min_date1 = st.date_input("評価日1（最小）", value=past_limit_date, label_visibility="collapsed")
-with col_d1_tilde:
-    st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
-with col_d1_2:
-    max_date1 = st.date_input("評価日1（最大）", value=future_limit_date, label_visibility="collapsed")
-
-# 4. 評価日３
-st.sidebar.markdown("**評価日３**")
-col_d3_1, col_d3_tilde, col_d3_2 = st.sidebar.columns([4, 1, 4])
-with col_d3_1:
-    min_date3 = st.date_input("評価日3（最小）", value=past_limit_date, label_visibility="collapsed")
-with col_d3_tilde:
-    st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
-with col_d3_2:
-    max_date3 = st.date_input("評価日3（最大）", value=future_limit_date, label_visibility="collapsed")
-
-# 5. 作家の総評価数
 st.sidebar.markdown("**作家の総評価数**")
 col_rev1, col_rev_tilde, col_rev2 = st.sidebar.columns([4, 1, 4])
 with col_rev1:
@@ -187,7 +257,7 @@ with col_rev_tilde:
     st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
 with col_rev2:
     max_rev = st.number_input("作家の総評価数（最大）", min_value=0, value=99999, label_visibility="collapsed")
-# 6. 直近1ヶ月の評価数
+# 3. 直近1ヶ月の評価数
 st.sidebar.markdown("**直近1ヶ月の評価数**")
 col_recent1, col_recent_tilde, col_recent2 = st.sidebar.columns([4, 1, 4])
 with col_recent1:
@@ -1302,33 +1372,11 @@ if start_button:
             if len(st.session_state.raw_data) > 0:
                 st.success(f"🎉 リサーチ完了！ 全 {len(st.session_state.raw_data)} 件のデータを取得しました。")
             else:
-                st.error("❌ データが0件でした。下の診断ログで原因を確認してください。")
+                st.error("❌ データが0件でした。条件やCreema側の状態を確認してください。")
        
         else:
-            st.error("❌ データが取得できませんでした。下の診断ログを確認してください。")
+            st.error("❌ データが取得できませんでした。条件やCreema側の状態を確認してください。")
             st.session_state.diagnostics = get_diagnostics()
-
-# --- 診断ログ表示 ---
-if show_diagnostics and st.session_state.get("diagnostics"):
-    logs, stats = st.session_state.diagnostics
-
-    st.markdown("### 🩺 診断ログ")
-
-    if stats:
-        stats_df = pd.DataFrame([{"項目": k, "回数": v} for k, v in sorted(stats.items())])
-        st.dataframe(stats_df, use_container_width=True, hide_index=True)
-
-    if logs:
-        log_df = pd.DataFrame(logs)
-        st.dataframe(log_df, use_container_width=True, hide_index=True)
-
-        csv_data = log_df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            label="🩺 診断ログをCSVでダウンロード",
-            data=csv_data,
-            file_name=f"creema_diagnostic_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
 
 # --- 画面表示処理 ---
 if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
@@ -1392,18 +1440,12 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
             return datetime.strptime(match.group(0), "%Y.%m.%d").date()
         return None
 
-    is_min_date1_default = (min_date1 == past_limit_date)
-    is_min_date3_default = (min_date3 == past_limit_date)
 
     def filter_row(row):
         # 価格
         if not (min_price <= row["価格(円)"] <= max_price):
             return False
 
-        # 購入者数
-        buyer_num = parse_buyer_count(row.get("購入者数", "0人"))
-        if not (min_buy <= buyer_num <= max_buy):
-            return False
 
         # 作家の総評価数
         if not (min_rev <= row["作家の総評価数"] <= max_rev):
@@ -1414,23 +1456,6 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
         if not (min_recent_review <= recent_review_num <= max_recent_review):
             return False
 
-        # 評価日1
-        d1 = parse_to_date(row.get("評価日1", "ー"))
-        if d1:
-            if not (min_date1 <= d1 <= max_date1):
-                return False
-        else:
-            if not is_min_date1_default:
-                return False
-
-        # 評価日3
-        d3 = parse_to_date(row.get("評価日3", "ー"))
-        if d3:
-            if not (min_date3 <= d3 <= max_date3):
-                return False
-        else:
-            if not is_min_date3_default:
-                return False
 
         return True
 
@@ -1539,4 +1564,5 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
         data=excel_data,
         file_name=f"creema_research_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
     )
