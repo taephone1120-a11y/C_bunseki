@@ -116,16 +116,6 @@ with col_price_tilde:
 with col_price2:
     max_price = st.number_input("価格（最大）", min_value=0, value=99999, label_visibility="collapsed")
 
-# 2. 作家の総評価数
-
-st.sidebar.markdown("**作家の総評価数**")
-col_rev1, col_rev_tilde, col_rev2 = st.sidebar.columns([4, 1, 4])
-with col_rev1:
-    min_rev = st.number_input("作家の総評価数（最小）", min_value=0, value=0, label_visibility="collapsed")
-with col_rev_tilde:
-    st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
-with col_rev2:
-    max_rev = st.number_input("作家の総評価数（最大）", min_value=0, value=99999, label_visibility="collapsed")
 # 3. 直近1ヶ月の評価数
 st.sidebar.markdown("**直近1ヶ月の評価数**")
 col_recent1, col_recent_tilde, col_recent2 = st.sidebar.columns([4, 1, 4])
@@ -145,6 +135,18 @@ with col_recent2:
         value=99999,
         label_visibility="collapsed"
     )
+
+# 2. 作家の総評価数
+
+st.sidebar.markdown("**作家の総評価数**")
+col_rev1, col_rev_tilde, col_rev2 = st.sidebar.columns([4, 1, 4])
+with col_rev1:
+    min_rev = st.number_input("作家の総評価数（最小）", min_value=0, value=0, label_visibility="collapsed")
+with col_rev_tilde:
+    st.markdown("<div style='text-align: center; line-height: 32px;'>〜</div>", unsafe_allow_html=True)
+with col_rev2:
+    max_rev = st.number_input("作家の総評価数（最大）", min_value=0, value=99999, label_visibility="collapsed")
+
 
 # =============================================
 #   高速通信用：Session使い回し
