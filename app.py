@@ -1315,15 +1315,16 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
         if not (min_price <= row["価格(円)"] <= max_price):
             return False
 
+        # 直近1ヶ月の評価数
+        recent_review_num = parse_recent_review_count(row.get("直近1ヶ月の評価数", "0件"))
+        if not (min_recent_review <= recent_review_num <= max_recent_review):
+            return False
+
 
         # 作家の総評価数
         if not (min_rev <= row["作家の総評価数"] <= max_rev):
             return False
 
-        # 直近1ヶ月の評価数
-        recent_review_num = parse_recent_review_count(row.get("直近1ヶ月の評価数", "0件"))
-        if not (min_recent_review <= recent_review_num <= max_recent_review):
-            return False
 
 
         return True
