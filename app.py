@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from bs4 import BeautifulSoup
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlparse, parse_qs, urlencode, urlunparse
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -328,14 +328,17 @@ def fast_get(url, headers=None, timeout=10, retry_label="通信"):
     # 通常ここには来ないが、型安全のため最後に1回アクセス
     return session.get(url, headers=headers, timeout=timeout)
 
-def cached_fast_get(url, headers=None, timeout=10):
-    """レビューページなど、同じURLを何度も読む可能性があるページをメモリに保存する。"""
-    with _cache_lock:
-        cached = _rating_page_cache.get(url)
+def cached_fast_get(url, headers=None, timeout=10, force_refresh=False):
+    """レビューページなど、同じURLを何度も読む可能性があるページをメモリに保存する。
+    force_refresh=True の場合はキャッシュを使わず、もう一度取得し直す。
+    """
+    if not force_refresh:
+        with _cache_lock:
+            cached = _rating_page_cache.get(url)
 
-    if cached is not None:
-        status_code, final_url, content = cached
-        return SimpleNamespace(status_code=status_code, url=final_url, content=content)
+        if cached is not None:
+            status_code, final_url, content = cached
+            return SimpleNamespace(status_code=status_code, url=final_url, content=content)
 
     res = fast_get(url, headers=headers, timeout=timeout, retry_label="レビューページ")
 
@@ -450,6 +453,38 @@ def convert_df_to_excel(df):
                 worksheet.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 25)
 
     return output.getvalue()
+
+# =============================================
+#   レビューページ解析補助
+# =============================================
+def extract_review_blocks_from_soup(soup):
+    """Creemaのレビューブロック候補を複数セレクタで拾う。HTML変更に少し強くする。"""
+    selectors = [
+        ".p-creator-rating-list__item",
+        ".p-creator-rating-rating__content",
+        "li[class*=rating]",
+        "div[class*=rating][class*=item]",
+        "div[class*=review][class*=item]",
+    ]
+    for selector in selectors:
+        blocks = soup.select(selector)
+        # 日付が含まれるブロックだけを優先
+        dated_blocks = [b for b in blocks if re.search(r"\d{4}\.\d{2}\.\d{2}", b.get_text(" ", strip=True))]
+        if dated_blocks:
+            return dated_blocks, selector
+        if blocks:
+            return blocks, selector
+    return [], ""
+
+def looks_like_blocked_or_unexpected_page(soup):
+    """200で返ってきても、アクセス制限・ログイン誘導・想定外ページっぽい場合を判定する。"""
+    text = soup.get_text(" ", strip=True)[:3000]
+    suspicious_words = [
+        "アクセスが集中", "しばらく時間をおいて", "ただいま混み合って",
+        "Forbidden", "Too Many Requests", "Access Denied", "認証", "ログイン",
+        "エラーが発生", "ページが見つかりません"
+    ]
+    return any(word in text for word in suspicious_words)
 
 # =============================================
 #   1件詳細解析用パーツ
@@ -660,19 +695,39 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
                     break
 
                 r_soup = BeautifulSoup(r_res.content, "html.parser")
+                blocks, block_selector = extract_review_blocks_from_soup(r_soup)
 
-                blocks = r_soup.select(".p-creator-rating-list__item")
-
+                # status=200でも、空ページ・アクセス制限・HTML変更っぽい時は、
+                # キャッシュを使わず1回だけ取り直す。
                 if not blocks:
-                    blocks = r_soup.select(".p-creator-rating-rating__content")
+                    diag_count("レビューブロック0件_初回")
+                    if looks_like_blocked_or_unexpected_page(r_soup):
+                        diag_count("レビューページ_想定外HTML")
+                        diag_log("レビューページ", f"{current_page}ページ目が想定外HTML/制限ページっぽいため、キャッシュなしで再取得", page_url, "WARN")
+                    else:
+                        diag_log("レビューページ", f"{current_page}ページ目でレビューブロック0件のため、キャッシュなしで再取得", page_url, "WARN")
 
-                if not blocks:
-                    diag_count("レビューブロック0件")
-                    diag_log("レビューページ", f"{current_page}ページ目でレビューブロックが0件。Creema側HTML変更/該当レビューなしの可能性", page_url, "WARN")
-                    print(f" - {current_page}ページ目: レビューブロックが0件のため終了")
-                    break
+                    r_res_retry = cached_fast_get(page_url, headers=headers, timeout=12, force_refresh=True)
+                    if r_res_retry.status_code == 200:
+                        r_soup_retry = BeautifulSoup(r_res_retry.content, "html.parser")
+                        retry_blocks, retry_selector = extract_review_blocks_from_soup(r_soup_retry)
+                        if retry_blocks:
+                            blocks = retry_blocks
+                            block_selector = retry_selector
+                            r_soup = r_soup_retry
+                            diag_count("レビューブロック0件_再取得成功")
+                            diag_log("レビューページ", f"再取得でレビューブロック取得成功 selector={block_selector} 件数={len(blocks)}", page_url, "INFO")
+                        else:
+                            diag_count("レビューブロック0件")
+                            diag_log("レビューページ", f"再取得後もレビューブロック0件。レビューなし/HTML変更/対象外ページの可能性", page_url, "WARN")
+                            print(f" - {current_page}ページ目: 再取得後もレビューブロックが0件のため終了")
+                            break
+                    else:
+                        diag_count("レビューページ_HTTP失敗_再取得")
+                        diag_log("レビューページ", f"レビューブロック0件後の再取得で status={r_res_retry.status_code}", page_url, "WARN")
+                        break
 
-                print(f" - {current_page}ページ目: レビューブロック {len(blocks)}件")
+                print(f" - {current_page}ページ目: レビューブロック {len(blocks)}件 selector={block_selector}")
 
                 found_in_page = 0
                 page_dates = []
@@ -898,6 +953,121 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
         print(traceback.format_exc())
         return None
 
+
+
+def make_absolute_url(href, base_url="https://www.creema.jp"):
+    """相対URLを絶対URLにする。"""
+    if not href:
+        return ""
+    return urljoin(base_url, href)
+
+
+
+
+def normalize_creema_item_url(url):
+    """Creemaの商品URLを重複判定用に正規化する。
+    例:
+    https://www.creema.jp/item/20646858/detail?vkey=...
+    → https://www.creema.jp/item/20646858/detail
+    """
+    if not url:
+        return ""
+
+    abs_url = make_absolute_url(url)
+    parsed = urlparse(abs_url)
+
+    # /item/数字/detail を取り出す
+    m = re.search(r"/item/(\d+)/detail", parsed.path)
+    if m:
+        return f"https://www.creema.jp/item/{m.group(1)}/detail"
+
+    # 万一 /item/数字 までしか取れない場合も拾う
+    m = re.search(r"/item/(\d+)", parsed.path)
+    if m:
+        return f"https://www.creema.jp/item/{m.group(1)}/detail"
+
+    # item URL以外は、クエリとフラグメントを落とす
+    return urlunparse((parsed.scheme or "https", parsed.netloc or "www.creema.jp", parsed.path, "", "", ""))
+
+
+def set_query_param(url, key, value):
+    """URLのクエリに key=value を安全に入れる。"""
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    query[key] = [str(value)]
+    new_query = urlencode(query, doseq=True)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+
+
+def find_next_listing_url(soup, current_url, page_count):
+    """
+    Creemaの次ページURLをできるだけ粘って探す。
+    以前は a.c-pagination__next だけだったため、HTML差分で1ページ目=10件で止まりやすかった。
+    """
+    # 1) いちばん従来に近い next ボタン
+    selectors = [
+        'a.c-pagination__next[href]',
+        'a[rel="next"][href]',
+        '.c-pagination a[aria-label*="次"][href]',
+        '.c-pagination a[href*="page="]',
+        'nav a[aria-label*="次"][href]',
+        'a[aria-label*="次"][href]',
+        'a:contains("次")',  # SoupSieveで使えない環境もあるのでtry側で吸収
+    ]
+
+    for selector in selectors:
+        try:
+            candidates = soup.select(selector)
+        except Exception:
+            candidates = []
+        for a in candidates:
+            href = a.get("href", "")
+            text = a.get_text(" ", strip=True)
+            cls = " ".join(a.get("class", []))
+            aria = a.get("aria-label", "")
+            if not href:
+                continue
+            # 明らかな前ページや現在ページは除外
+            if "prev" in cls.lower() or "前" in text or "前" in aria:
+                continue
+            # c-pagination内の page= は複数候補があるので、現在より大きいpageを優先
+            abs_url = make_absolute_url(href, current_url)
+            parsed = urlparse(abs_url)
+            qs = parse_qs(parsed.query)
+            page_vals = qs.get("page") or qs.get("p")
+            if page_vals:
+                try:
+                    if int(page_vals[0]) <= page_count:
+                        continue
+                except Exception:
+                    pass
+            # nextっぽいものを返す
+            if ("next" in cls.lower()) or ("次" in text) or ("次" in aria) or page_vals:
+                return abs_url, "HTMLから次ページURL検出"
+
+    # 2) ページ番号リンクの中から、現在ページより大きい最小ページを探す
+    page_candidates = []
+    for a in soup.select('a[href*="page="]'):
+        href = a.get("href", "")
+        abs_url = make_absolute_url(href, current_url)
+        qs = parse_qs(urlparse(abs_url).query)
+        vals = qs.get("page")
+        if not vals:
+            continue
+        try:
+            n = int(vals[0])
+        except Exception:
+            continue
+        if n > page_count:
+            page_candidates.append((n, abs_url))
+    if page_candidates:
+        page_candidates.sort(key=lambda x: x[0])
+        return page_candidates[0][1], "ページ番号リンクから次ページURL検出"
+
+    # 3) 最後の手段：URLにpage=Nを手動で付ける
+    fallback_url = set_query_param(current_url, "page", page_count + 1)
+    return fallback_url, "手動でpageパラメータ生成"
+
 # =============================================
 #   メインのスクレイピング制御関数
 # =============================================
@@ -968,13 +1138,17 @@ def scrape_creema_fast(start_url, max_num):
                     continue
 
                 if href.startswith("http"):
-                    link = href
+                    raw_link = href
                 else:
-                    link = "https://www.creema.jp" + href
+                    raw_link = "https://www.creema.jp" + href
 
-                # URLの重複を防ぐ
+                # vkey / screen / profile などのパラメータ違いを同じ商品として扱う
+                link = normalize_creema_item_url(raw_link)
+
+                # URL全文ではなく、正規化した商品URLで重複を防ぐ
                 if link in seen_urls:
                     duplicate_count += 1
+                    diag_count("一覧ページ_正規化URL重複スキップ")
                     continue
 
                 seen_urls.add(link)
@@ -1000,20 +1174,26 @@ def scrape_creema_fast(start_url, max_num):
                 diag_count("一覧ページ_重複URLスキップ", duplicate_count)
             diag_log("一覧ページ", f"{page_count}ページ目: 商品候補 {len(items)}件 / 追加 {added_count}件 / 重複スキップ {duplicate_count}件 / 累計 {len(all_item_elements_data)}件", current_url, "INFO")
 
-            next_tag = soup.select_one("a.c-pagination__next")
-
-            if next_tag and "href" in next_tag.attrs:
-                next_href = next_tag["href"]
-
-                if next_href.startswith("http"):
-                    current_url = next_href
-                else:
-                    current_url = "https://www.creema.jp" + next_href
-
-                page_count += 1
-                time.sleep(CURRENT_SPEED["sleep"])
+            # 次ページURL取得。HTML変更に強くするため、複数の方法で探す。
+            if len(all_item_elements_data) >= max_num:
+                current_url = None
             else:
-                diag_log("一覧ページ", "次ページボタン a.c-pagination__next が見つからないため一覧巡回を終了", current_url, "WARN")
+                next_url, next_reason = find_next_listing_url(soup, current_url, page_count)
+
+                # 手動生成URLの場合、本当に商品があるかは次ループで確認する。
+                # 商品0件・同じ商品だけの場合は、その時点で終了する。
+                if next_url and next_url != current_url:
+                    diag_log("一覧ページ", f"次ページへ移動: {next_reason}", next_url, "INFO")
+                    current_url = next_url
+                    page_count += 1
+                    time.sleep(CURRENT_SPEED["sleep"])
+                else:
+                    diag_log("一覧ページ", "次ページURLが作れないため一覧巡回を終了", current_url, "WARN")
+                    current_url = None
+
+            # 次ページへ進んでも新規追加が0件の状態が続くと無限巡回になり得るため、ここで止める。
+            if added_count == 0 and duplicate_count >= len(items):
+                diag_log("一覧ページ", "このページの商品がすべて重複だったため一覧巡回を終了", current_url, "WARN")
                 current_url = None
 
         except Exception as e:
@@ -1063,8 +1243,30 @@ def scrape_creema_fast(start_url, max_num):
     
     diag_log("詳細解析", f"詳細解析完了: 成功 {len(scraped_data)}件 / 失敗 {total_found - len(scraped_data)}件", start_url, "INFO")
     if scraped_data:
-        for i, item in enumerate(scraped_data, 1): item["No."] = i
-        return {"items": scraped_data, "market_total": detected_market_total, "diagnostics": get_diagnostics()}
+        # 念のため、詳細解析後にも商品URLを正規化して重複除外する
+        unique_data = []
+        seen_result_urls = set()
+        removed_after_detail = 0
+
+        for item in scraped_data:
+            normalized_url = normalize_creema_item_url(item.get("商品URL", ""))
+            item["商品URL"] = normalized_url
+
+            if normalized_url in seen_result_urls:
+                removed_after_detail += 1
+                continue
+
+            seen_result_urls.add(normalized_url)
+            unique_data.append(item)
+
+        if removed_after_detail:
+            diag_count("詳細解析後_重複除外", removed_after_detail)
+            diag_log("詳細解析", f"詳細解析後に重複商品を {removed_after_detail} 件除外", "", "WARN")
+
+        for i, item in enumerate(unique_data, 1):
+            item["No."] = i
+
+        return {"items": unique_data, "market_total": detected_market_total, "diagnostics": get_diagnostics()}
     diag_log("終了", "商品リンクは取れたが、詳細解析に成功した商品が0件でした", start_url, "ERROR")
     return {"items": [], "market_total": detected_market_total, "diagnostics": get_diagnostics()}
 
