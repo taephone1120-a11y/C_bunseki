@@ -1565,4 +1565,3 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
         file_name=f"creema_research_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    )
