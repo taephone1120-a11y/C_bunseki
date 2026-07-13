@@ -89,7 +89,6 @@ else:
 # 　その場合は外部のRedis等で共有カウンタを持つ必要があります）
 
 HARD_MAX_ITEMS = 300               # 1回のリサーチで取得できる件数の絶対上限（1000→300に縮小）
-MAX_REVIEW_PAGES = 6               # 1商品あたりのレビュー深掘りページ数の上限（20→6に縮小）
 MAX_CONCURRENT_RUNS = 1            # アプリ全体で同時に実行できるリサーチの数
 GLOBAL_MIN_REQUEST_INTERVAL = 0.5  # 全ユーザー合算で、Creemaへのリクエスト最小間隔（秒）
 
@@ -141,9 +140,22 @@ max_items = min(int(max_items), HARD_MAX_ITEMS)
 speed_mode = "高速（おすすめ）"
 
 SPEED_CONFIG = {
-    "高速（おすすめ）": {"review_pages": MAX_REVIEW_PAGES, "workers_large": 2, "workers_small": 2, "sleep": 0.3},
+    "高速（おすすめ）": {"review_pages": 20, "workers_large": 6, "workers_small": 8, "sleep": 0.12},
 }
 CURRENT_SPEED = SPEED_CONFIG[speed_mode]
+
+st.sidebar.markdown('---')
+st.sidebar.header("📅 評価日データの取得")
+include_eval_dates = st.sidebar.checkbox(
+    "評価日1〜3を取得する",
+    value=True,
+    help="OFFにすると、この列は結果に含まれません。"
+)
+include_first_review_date = st.sidebar.checkbox(
+    "作家の一番初めの評価日を取得する",
+    value=True,
+    help="OFFにすると、商品1件ごとの追加リクエストが1回減るため、リサーチが少し速くなります。"
+)
 
 # 診断ログと通信リトライ設定は内部処理用に残し、画面には表示しない
 show_diagnostics = False
@@ -495,7 +507,7 @@ def looks_like_blocked_or_unexpected_page(soup):
 # =============================================
 #   1件詳細解析用パーツ
 # =============================================
-def _internal_fetch_item(item_data, headers, one_month_ago):
+def _internal_fetch_item(item_data, headers, one_month_ago, include_eval_dates=True, include_first_review_date=True):
     link = item_data["link"]
     creator = item_data["creator"]
     title = item_data["title"]
@@ -876,13 +888,16 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
 
             recent_sales = ["ー", "ー", "ー"]
 
-            display_slots = min(purchase_num, 3)
+            if include_eval_dates:
+                display_slots = min(purchase_num, 3)
 
-            for i in range(display_slots):
-                if i < len(recent_three_month_dates):
-                    recent_sales[i] = recent_three_month_dates[i].strftime("%Y.%m.%d")
-                else:
-                    recent_sales[i] = "3ヶ月以上前"
+                for i in range(display_slots):
+                    if i < len(recent_three_month_dates):
+                        recent_sales[i] = recent_three_month_dates[i].strftime("%Y.%m.%d")
+                    else:
+                        recent_sales[i] = "3ヶ月以上前"
+            else:
+                recent_sales = ["対象外(OFF)", "対象外(OFF)", "対象外(OFF)"]
 
             # =========================
             # 対象商品のその商品の直近1ヶ月の評価数
@@ -898,36 +913,40 @@ def _internal_fetch_item(item_data, headers, one_month_ago):
             # =========================
             # クリエイターの作家の総評価数から最終ページを計算し、
             # 最終ページ内の日付の中で一番古い日付を使う
-            try:
-                if review > 0:
-                    last_page = math.ceil(review / 20)
+            # OFFの場合は追加リクエストをかけずにスキップする
+            if include_first_review_date:
+                try:
+                    if review > 0:
+                        last_page = math.ceil(review / 20)
 
-                    last_page_url = f"{canonical_rating_url}?page={last_page}"
-                    print("作家の一番初めの評価日チェックURL:", last_page_url)
+                        last_page_url = f"{canonical_rating_url}?page={last_page}"
+                        print("作家の一番初めの評価日チェックURL:", last_page_url)
 
-                    last_res = cached_fast_get(last_page_url, headers=headers, timeout=10)
-                    print("作家の一番初めの評価日チェック 最終URL:", last_res.url)
+                        last_res = cached_fast_get(last_page_url, headers=headers, timeout=10)
+                        print("作家の一番初めの評価日チェック 最終URL:", last_res.url)
 
-                    if last_res.status_code == 200:
-                        last_soup = BeautifulSoup(last_res.content, "html.parser")
-                        last_page_text = last_soup.get_text(" ", strip=True)
+                        if last_res.status_code == 200:
+                            last_soup = BeautifulSoup(last_res.content, "html.parser")
+                            last_page_text = last_soup.get_text(" ", strip=True)
 
-                        date_matches = re.findall(
-                            r"\(\s*(\d{4}\.\d{2}\.\d{2})\s*\)",
-                            last_page_text
-                        )
-
-                        if date_matches:
-                            oldest_date = min(
-                                datetime.strptime(d, "%Y.%m.%d")
-                                for d in date_matches
+                            date_matches = re.findall(
+                                r"\(\s*(\d{4}\.\d{2}\.\d{2})\s*\)",
+                                last_page_text
                             )
-                            first_review_date = oldest_date.strftime("%Y.%m.%d")
 
-            except Exception as e:
-                diag_count("初回評価日_取得失敗")
-                diag_log("初回評価日", f"取得エラー: {type(e).__name__}: {e}", canonical_rating_url, "WARN")
-                print("作家の一番初めの評価日取得エラー:", e)
+                            if date_matches:
+                                oldest_date = min(
+                                    datetime.strptime(d, "%Y.%m.%d")
+                                    for d in date_matches
+                                )
+                                first_review_date = oldest_date.strftime("%Y.%m.%d")
+
+                except Exception as e:
+                    diag_count("初回評価日_取得失敗")
+                    diag_log("初回評価日", f"取得エラー: {type(e).__name__}: {e}", canonical_rating_url, "WARN")
+                    print("作家の一番初めの評価日取得エラー:", e)
+            else:
+                first_review_date = "対象外(OFF)"
 
         else:
             diag_count("レビューページリンクなし")
@@ -1077,7 +1096,7 @@ def find_next_listing_url(soup, current_url, page_count):
 # =============================================
 #   メインのスクレイピング制御関数
 # =============================================
-def scrape_creema_fast(start_url, max_num):
+def scrape_creema_fast(start_url, max_num, include_eval_dates=True, include_first_review_date=True):
     reset_diagnostics()
     diag_log("開始", f"リサーチ開始: 上限={max_num}件 / 速度={speed_mode} / リトライ={retry_count}回 / 待機={retry_base_wait}秒", start_url, "INFO")
     headers = {
@@ -1224,7 +1243,7 @@ def scrape_creema_fast(start_url, max_num):
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_item = {
-            executor.submit(_internal_fetch_item, item_data, headers, one_month_ago): item_data 
+            executor.submit(_internal_fetch_item, item_data, headers, one_month_ago, include_eval_dates, include_first_review_date): item_data 
             for item_data in all_item_elements_data
         }
         for future in as_completed(future_to_item):
@@ -1309,10 +1328,12 @@ if start_button:
                     st.warning(f"LINE通知でエラーが出ましたが、リサーチは続行します: {type(e).__name__}: {e}")
 
             with st.spinner("🔄 Creemaのデータを解析中...（サーバー負荷を抑えるため、ゆっくり進みます）"):
-                res_dict = scrape_creema_fast(target_url, max_items)
+                res_dict = scrape_creema_fast(target_url, max_items, include_eval_dates, include_first_review_date)
 
             if res_dict is not None:
                 st.session_state.raw_data = res_dict.get("items", [])
+                st.session_state.include_eval_dates = include_eval_dates
+                st.session_state.include_first_review_date = include_first_review_date
                 st.session_state.market_total = res_dict.get("market_total", 0)
                 st.session_state.diagnostics = res_dict.get("diagnostics")
 
@@ -1429,11 +1450,17 @@ if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
         "作家の総評価数",
         "購入者数",
         "お気に入り数",
-        "評価日1",
-        "評価日2",
-        "評価日3",
-        "作家の一番初めの評価日",
     ]
+
+    if st.session_state.get("include_eval_dates", True):
+        preferred_columns += ["評価日1", "評価日2", "評価日3"]
+    else:
+        filtered_df = filtered_df.drop(columns=["評価日1", "評価日2", "評価日3"], errors="ignore")
+
+    if st.session_state.get("include_first_review_date", True):
+        preferred_columns += ["作家の一番初めの評価日"]
+    else:
+        filtered_df = filtered_df.drop(columns=["作家の一番初めの評価日"], errors="ignore")
 
     existing_columns = [col for col in preferred_columns if col in filtered_df.columns]
     other_columns = [col for col in filtered_df.columns if col not in existing_columns]
