@@ -127,7 +127,7 @@ max_items = min(int(max_items), HARD_MAX_ITEMS)
 speed_mode = "高速（おすすめ）"
 
 SPEED_CONFIG = {
-    "高速（おすすめ）": {"review_pages": 20, "workers_large": 6, "workers_small": 8, "sleep": 0.12},
+    "高速（おすすめ）": {"review_pages": 20, "workers_large": 6, "workers_small": 8, "sleep": 0.01},
 }
 CURRENT_SPEED = SPEED_CONFIG[speed_mode]
 
@@ -135,13 +135,13 @@ st.sidebar.markdown('---')
 st.sidebar.header("📅 評価日データの取得")
 include_eval_dates = st.sidebar.checkbox(
     "評価日1〜3を取得する",
-    value=True,
+    value=False,
     help="OFFにすると、この列は結果に含まれません。"
 )
 include_first_review_date = st.sidebar.checkbox(
     "作家の一番初めの評価日を取得する",
-    value=True,
-    help="OFFにすると、商品1件ごとの追加リクエストが1回減るため、リサーチが少し速くなります。"
+    value=False,
+    help="ONにすると商品1件ごとに追加リクエストが1回増え、リサーチが遅くなります(接続切れのリスクも上がります)。"
 )
 
 # 診断ログと通信リトライ設定は内部処理用に残し、画面には表示しない
@@ -293,7 +293,7 @@ def fast_get(url, headers=None, timeout=10, retry_label="通信"):
             diag_count(f"HTTP_{res.status_code}")
 
             if attempt < max_attempts:
-                wait_sec = float(retry_base_wait) * attempt + random.uniform(0.2, 1.2)
+                wait_sec = float(retry_base_wait) * attempt + random.uniform(0.1, 0.4)
                 diag_count("リトライ実行")
                 diag_log(
                     retry_label,
@@ -313,7 +313,7 @@ def fast_get(url, headers=None, timeout=10, retry_label="通信"):
             diag_count(f"通信例外_{type(e).__name__}")
 
             if attempt < max_attempts:
-                wait_sec = float(retry_base_wait) * attempt + random.uniform(0.2, 1.2)
+                wait_sec = float(retry_base_wait) * attempt + random.uniform(0.1, 0.4)
                 diag_count("リトライ実行")
                 diag_log(
                     retry_label,
