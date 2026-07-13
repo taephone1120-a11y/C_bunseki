@@ -93,6 +93,40 @@ MAX_REVIEW_PAGES = 6               # 1商品あたりのレビュー深掘りペ
 MAX_CONCURRENT_RUNS = 1            # アプリ全体で同時に実行できるリサーチの数
 GLOBAL_MIN_REQUEST_INTERVAL = 0.5  # 全ユーザー合算で、Creemaへのリクエスト最小間隔（秒）
 
+# --- 全ユーザー共通のレート制限（ペーシング） ---
+# ワーカー数をどれだけ増やしても、Creemaへの実際の送信間隔はこのロックで一本化される。
+_global_pace_lock = threading.Lock()
+_global_last_request_ts = [0.0]
+
+def global_pace_wait():
+    with _global_pace_lock:
+        now = time.monotonic()
+        wait = GLOBAL_MIN_REQUEST_INTERVAL - (now - _global_last_request_ts[0])
+        if wait > 0:
+            time.sleep(wait)
+        _global_last_request_ts[0] = time.monotonic()
+
+# --- 同時実行数の制御（サーキットブレーカー） ---
+# 複数の利用者が同時に「リサーチを開始する」を押した場合、
+# MAX_CONCURRENT_RUNS を超える分は実行させず、待ってもらう。
+_active_runs_lock = threading.Lock()
+_active_runs = [0]
+
+def try_acquire_run_slot():
+    with _active_runs_lock:
+        if _active_runs[0] >= MAX_CONCURRENT_RUNS:
+            return False
+        _active_runs[0] += 1
+        return True
+
+def release_run_slot():
+    with _active_runs_lock:
+        _active_runs[0] = max(0, _active_runs[0] - 1)
+
+def get_active_runs():
+    with _active_runs_lock:
+        return _active_runs[0]
+
 max_items = st.sidebar.number_input(
     "🔢 取得する商品件数",
     min_value=1,
@@ -182,49 +216,6 @@ with col_rev2:
 _thread_local = threading.local()
 _cache_lock = threading.Lock()
 _rating_page_cache = {}
-
-# =============================================
-#   🛡️ 全ユーザー共通のレート制限（ペーシング）
-# =============================================
-# ここが今回の一番の対策。ワーカー数をどれだけ増やしても、
-# 「Creemaに実際にリクエストを送る間隔」はこのロックで全体一本化される。
-# = 同時に何人がこのアプリを使っていても、Creemaから見えるアクセス頻度は
-#   常に GLOBAL_MIN_REQUEST_INTERVAL 秒に1回以下に抑えられる。
-_global_pace_lock = threading.Lock()
-_global_last_request_ts = [0.0]
-
-def global_pace_wait():
-    with _global_pace_lock:
-        now = time.monotonic()
-        wait = GLOBAL_MIN_REQUEST_INTERVAL - (now - _global_last_request_ts[0])
-        if wait > 0:
-            time.sleep(wait)
-        _global_last_request_ts[0] = time.monotonic()
-
-# =============================================
-#   🚦 同時実行数の制御（サーキットブレーカー）
-# =============================================
-# 複数の利用者が同時に「リサーチを開始する」を押した場合、
-# MAX_CONCURRENT_RUNS を超える分は実行せず、待ってもらう。
-# これにより「みんなが同時に1クリック1000件」のような
-# 突発的な負荷集中（DoS的な状況）を構造的に防ぐ。
-_active_runs_lock = threading.Lock()
-_active_runs = [0]
-
-def try_acquire_run_slot():
-    with _active_runs_lock:
-        if _active_runs[0] >= MAX_CONCURRENT_RUNS:
-            return False
-        _active_runs[0] += 1
-        return True
-
-def release_run_slot():
-    with _active_runs_lock:
-        _active_runs[0] = max(0, _active_runs[0] - 1)
-
-def get_active_runs():
-    with _active_runs_lock:
-        return _active_runs[0]
 
 # =============================================
 #   🩺 診断ログ：止まった原因を見える化
