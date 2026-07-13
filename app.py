@@ -152,7 +152,11 @@ retry_base_wait = 2.0
 
 RETRY_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
 
-start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
+col_start, col_stop = st.sidebar.columns([2, 1])
+with col_start:
+    start_button = st.button("🚀 リサーチを開始する", type="primary")
+with col_stop:
+    stop_button = st.button("⏹ 停止")
 
 # フィルターエリア
 st.sidebar.markdown('---')
@@ -1230,22 +1234,36 @@ def scrape_creema_fast(start_url, max_num, include_eval_dates=True, include_firs
             executor.submit(_internal_fetch_item, item_data, headers, one_month_ago, include_eval_dates, include_first_review_date): item_data 
             for item_data in all_item_elements_data
         }
-        for future in as_completed(future_to_item):
-            item_data = future_to_item[future]
-            try:
-                result = future.result()
-            except Exception as e:
-                result = None
-                diag_count("Future_例外")
-                diag_log("詳細解析", f"future.result()で例外: {type(e).__name__}: {e}", item_data.get("link", ""), "ERROR")
-                print(traceback.format_exc())
-            current_idx += 1
-            if result:
-                scraped_data.append(result)
-            else:
-                diag_count("詳細解析_結果なし")
-            progress_bar.progress(min(current_idx / total_found, 1.0))
-            status_text.text(f"⏳ 解析中（{speed_mode}）... 完了: {current_idx} / {total_found} 件 / 成功: {len(scraped_data)} 件")
+        try:
+            for future in as_completed(future_to_item):
+                item_data = future_to_item[future]
+                try:
+                    result = future.result()
+                except Exception as e:
+                    result = None
+                    diag_count("Future_例外")
+                    diag_log("詳細解析", f"future.result()で例外: {type(e).__name__}: {e}", item_data.get("link", ""), "ERROR")
+                    print(traceback.format_exc())
+                current_idx += 1
+                if result:
+                    scraped_data.append(result)
+                    # 🛑 ここまでに取れたデータを毎回セッションへ反映しておく。
+                    # 「停止」ボタンで実行が打ち切られても、直近のこの書き込みまでは残る。
+                    snapshot = list(scraped_data)
+                    for i, snap_item in enumerate(snapshot, 1):
+                        snap_item["No."] = i
+                    st.session_state.raw_data = snapshot
+                else:
+                    diag_count("詳細解析_結果なし")
+                progress_bar.progress(min(current_idx / total_found, 1.0))
+                status_text.text(f"⏳ 解析中（{speed_mode}）... 完了: {current_idx} / {total_found} 件 / 成功: {len(scraped_data)} 件")
+        except BaseException:
+            # 🛑 停止ボタン等でこの実行自体が打ち切られた場合、まだ着手していない
+            # 残りタスクはすぐに諦めて（cancel_futures=True）、今動いている分の
+            # 完了だけ待つ。これをしないと「停止」を押しても裏で全件終わるまで
+            # 処理が続いてしまう。
+            executor.shutdown(wait=True, cancel_futures=True)
+            raise
                 
     progress_bar.empty()
     status_text.empty()
@@ -1292,6 +1310,12 @@ if start_button:
     else:
         cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
         st.session_state.diagnostics = None
+        # 🛑 停止時に前回までの古いデータが混ざらないよう、開始時点でリセットする。
+        # ここから先は「取得できるたびに」session_stateへ書き込んでいくので、
+        # 途中で「停止」が押されても、この時点までの分は残る。
+        st.session_state.raw_data = []
+        st.session_state.include_eval_dates = include_eval_dates
+        st.session_state.include_first_review_date = include_first_review_date
 
         if not skip_line_notify:
             try:
@@ -1318,6 +1342,10 @@ if start_button:
         else:
             st.error("❌ データが取得できませんでした。条件やCreema側の状態を確認してください。")
             st.session_state.diagnostics = get_diagnostics()
+
+if stop_button:
+    got = len(st.session_state.raw_data) if st.session_state.raw_data else 0
+    st.info(f"⏹ 停止しました。ここまでに取得できた {got} 件のデータを表示します。")
 
 # --- 診断ログ表示（何が起きているかを見えるようにする） ---
 if st.session_state.get("diagnostics"):
