@@ -83,28 +83,24 @@ else:
 # =============================================
 # ここは「1人のユーザーの設定」ではなく、このアプリを使う
 # 全員・全セッションに共通で効く「アプリ全体の上限」です。
-# Streamlitは同一プロセス内でモジュールレベルの変数を共有するため、
-# ここで制御すれば「同時に何人使っても」下記の上限を超えません。
+# st.cache_resource を使うことで、再実行やセッションをまたいでも
+# プロセス内に1つだけ残る「本当のグローバル状態」として扱えます。
 # （※複数サーバー・複数プロセスに分散デプロイする場合はこの限りではなく、
-# 　その場合は外部のRedis等で共有カウンタを持つ必要があります）
+# 　その場合は外部のRedis等で共有状態を持つ必要があります）
 
 HARD_MAX_ITEMS = 300               # 1回のリサーチで取得できる件数の絶対上限（1000→300に縮小）
-MAX_CONCURRENT_RUNS = 1            # アプリ全体で同時に実行できるリサーチの数
 GLOBAL_MIN_REQUEST_INTERVAL = 0.5  # 全ユーザー合算で、Creemaへのリクエスト最小間隔（秒）
 
-# --- 全ユーザー・全セッションで本当に共有される状態 ---
-# Streamlitは操作のたびにスクリプト全体を再実行するため、ただのトップレベル変数
-# （例: _active_runs = [0]）は再実行のたびに初期化されてしまい、
-# 「PCとスマホ両方で押せてしまう」原因になる。
-# st.cache_resource は、再実行やセッションをまたいでプロセス内に1つだけ残るため、
-# ここに入れたものだけが本当の意味でのグローバル状態になる。
+# --- 全ユーザー・全セッションで共有されるペーシング用ロック ---
+# 同時に何人がボタンを押しても、実際にCreemaへ送信されるリクエストは
+# 全員このロック1本の後ろに並び、0.5秒に1回以下のペースに間引かれる。
+# そのため「同時実行を人数で制限する」仕組みは不要（かつ、カウンターが
+# ズレて固まった場合に自分自身を締め出すリスクがあるだけなので撤去した）。
 @st.cache_resource
 def get_shared_state():
     return {
         "pace_lock": threading.Lock(),
         "last_request_ts": 0.0,
-        "runs_lock": threading.Lock(),
-        "active_runs": 0,
     }
 
 _shared = get_shared_state()
@@ -116,21 +112,6 @@ def global_pace_wait():
         if wait > 0:
             time.sleep(wait)
         _shared["last_request_ts"] = time.monotonic()
-
-def try_acquire_run_slot():
-    with _shared["runs_lock"]:
-        if _shared["active_runs"] >= MAX_CONCURRENT_RUNS:
-            return False
-        _shared["active_runs"] += 1
-        return True
-
-def release_run_slot():
-    with _shared["runs_lock"]:
-        _shared["active_runs"] = max(0, _shared["active_runs"] - 1)
-
-def get_active_runs():
-    with _shared["runs_lock"]:
-        return _shared["active_runs"]
 
 max_items = st.sidebar.number_input(
     "🔢 取得する商品件数",
@@ -1306,49 +1287,35 @@ if "diagnostics" not in st.session_state: st.session_state.diagnostics = None
 if start_button:
     if (mode == "一覧URL直貼り" and not target_url) or (mode == "キーワード検索" and not search_keyword):
         st.error("⚠️ 条件を入力してください。")
-    elif not try_acquire_run_slot():
-        # 🚦 同時実行数の上限に達している場合は、新規のリサーチを開始しない。
-        # 「今すごく混んでいる」ときに新しい検索を止めることで、
-        # 多人数の同時アクセスによるCreemaへの負荷集中を防ぐ。
-        st.warning(
-            "🚦 現在、他の利用者がリサーチを実行中です。\n\n"
-            "Creemaサーバーへの負荷を抑えるため、このツールは同時実行を"
-            f"{MAX_CONCURRENT_RUNS}件までに制限しています。"
-            "しばらく時間をおいてから、もう一度お試しください。"
-        )
     else:
-        try:
-            cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
-            st.session_state.diagnostics = None
+        cond_text = f"キーワード: {search_keyword}" if mode == "キーワード検索" else f"直貼りURL: {target_url}"
+        st.session_state.diagnostics = None
 
-            if not skip_line_notify:
-                try:
-                    send_line_notification(cond_text, max_items)
-                except Exception as e:
-                    # LINE通知で止まらないようにする
-                    st.warning(f"LINE通知でエラーが出ましたが、リサーチは続行します: {type(e).__name__}: {e}")
+        if not skip_line_notify:
+            try:
+                send_line_notification(cond_text, max_items)
+            except Exception as e:
+                # LINE通知で止まらないようにする
+                st.warning(f"LINE通知でエラーが出ましたが、リサーチは続行します: {type(e).__name__}: {e}")
 
-            with st.spinner("🔄 Creemaのデータを解析中...（サーバー負荷を抑えるため、ゆっくり進みます）"):
-                res_dict = scrape_creema_fast(target_url, max_items, include_eval_dates, include_first_review_date)
+        with st.spinner("🔄 Creemaのデータを解析中...（サーバー負荷を抑えるため、ゆっくり進みます）"):
+            res_dict = scrape_creema_fast(target_url, max_items, include_eval_dates, include_first_review_date)
 
-            if res_dict is not None:
-                st.session_state.raw_data = res_dict.get("items", [])
-                st.session_state.include_eval_dates = include_eval_dates
-                st.session_state.include_first_review_date = include_first_review_date
-                st.session_state.market_total = res_dict.get("market_total", 0)
-                st.session_state.diagnostics = res_dict.get("diagnostics")
+        if res_dict is not None:
+            st.session_state.raw_data = res_dict.get("items", [])
+            st.session_state.include_eval_dates = include_eval_dates
+            st.session_state.include_first_review_date = include_first_review_date
+            st.session_state.market_total = res_dict.get("market_total", 0)
+            st.session_state.diagnostics = res_dict.get("diagnostics")
 
-                if len(st.session_state.raw_data) > 0:
-                    st.success(f"🎉 リサーチ完了！ 全 {len(st.session_state.raw_data)} 件のデータを取得しました。")
-                else:
-                    st.error("❌ データが0件でした。条件やCreema側の状態を確認してください。")
-
+            if len(st.session_state.raw_data) > 0:
+                st.success(f"🎉 リサーチ完了！ 全 {len(st.session_state.raw_data)} 件のデータを取得しました。")
             else:
-                st.error("❌ データが取得できませんでした。条件やCreema側の状態を確認してください。")
-                st.session_state.diagnostics = get_diagnostics()
-        finally:
-            # 🚦 成功・失敗・例外にかかわらず、必ず実行枠を解放する
-            release_run_slot()
+                st.error("❌ データが0件でした。条件やCreema側の状態を確認してください。")
+
+        else:
+            st.error("❌ データが取得できませんでした。条件やCreema側の状態を確認してください。")
+            st.session_state.diagnostics = get_diagnostics()
 
 # --- 画面表示処理 ---
 if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
