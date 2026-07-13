@@ -1199,8 +1199,10 @@ def scrape_creema_fast(start_url, max_num, include_eval_dates=True, include_firs
                     current_url = None
 
             # 次ページへ進んでも新規追加が0件の状態が続くと無限巡回になり得るため、ここで止める。
-            if added_count == 0 and duplicate_count >= len(items):
-                diag_log("一覧ページ", "このページの商品がすべて重複だったため一覧巡回を終了", current_url, "WARN")
+            # 「全部重複だった」場合だけでなく、「HTML変更等でこのページから
+            # 1件も商品を拾えなかった」場合も同様に止める（理由を問わず追加0件なら終了）。
+            if added_count == 0 and len(items) > 0:
+                diag_log("一覧ページ", f"このページから新規追加0件（重複{duplicate_count}件/候補{len(items)}件）のため一覧巡回を終了", current_url, "WARN")
                 current_url = None
 
         except Exception as e:
@@ -1316,6 +1318,15 @@ if start_button:
         else:
             st.error("❌ データが取得できませんでした。条件やCreema側の状態を確認してください。")
             st.session_state.diagnostics = get_diagnostics()
+
+# --- 診断ログ表示（何が起きているかを見えるようにする） ---
+if st.session_state.get("diagnostics"):
+    logs, stats = st.session_state.diagnostics
+    with st.expander(f"🩺 診断ログを見る（直近の集計: {dict(stats)}）", expanded=False):
+        if logs:
+            st.dataframe(pd.DataFrame(logs), use_container_width=True, hide_index=True)
+        else:
+            st.caption("ログはまだありません。")
 
 # --- 画面表示処理 ---
 if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
