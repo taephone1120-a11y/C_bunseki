@@ -1347,15 +1347,6 @@ if stop_button:
     got = len(st.session_state.raw_data) if st.session_state.raw_data else 0
     st.info(f"⏹ 停止しました。ここまでに取得できた {got} 件のデータを表示します。")
 
-# --- 診断ログ表示（何が起きているかを見えるようにする） ---
-if st.session_state.get("diagnostics"):
-    logs, stats = st.session_state.diagnostics
-    with st.expander(f"🩺 診断ログを見る（直近の集計: {dict(stats)}）", expanded=False):
-        if logs:
-            st.dataframe(pd.DataFrame(logs), use_container_width=True, hide_index=True)
-        else:
-            st.caption("ログはまだありません。")
-
 # --- 画面表示処理 ---
 if st.session_state.raw_data is not None and len(st.session_state.raw_data) > 0:
     raw_df = pd.DataFrame(st.session_state.raw_data)
