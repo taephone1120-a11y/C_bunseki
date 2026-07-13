@@ -92,39 +92,45 @@ HARD_MAX_ITEMS = 300               # 1回のリサーチで取得できる件数
 MAX_CONCURRENT_RUNS = 1            # アプリ全体で同時に実行できるリサーチの数
 GLOBAL_MIN_REQUEST_INTERVAL = 0.5  # 全ユーザー合算で、Creemaへのリクエスト最小間隔（秒）
 
-# --- 全ユーザー共通のレート制限（ペーシング） ---
-# ワーカー数をどれだけ増やしても、Creemaへの実際の送信間隔はこのロックで一本化される。
-_global_pace_lock = threading.Lock()
-_global_last_request_ts = [0.0]
+# --- 全ユーザー・全セッションで本当に共有される状態 ---
+# Streamlitは操作のたびにスクリプト全体を再実行するため、ただのトップレベル変数
+# （例: _active_runs = [0]）は再実行のたびに初期化されてしまい、
+# 「PCとスマホ両方で押せてしまう」原因になる。
+# st.cache_resource は、再実行やセッションをまたいでプロセス内に1つだけ残るため、
+# ここに入れたものだけが本当の意味でのグローバル状態になる。
+@st.cache_resource
+def get_shared_state():
+    return {
+        "pace_lock": threading.Lock(),
+        "last_request_ts": 0.0,
+        "runs_lock": threading.Lock(),
+        "active_runs": 0,
+    }
+
+_shared = get_shared_state()
 
 def global_pace_wait():
-    with _global_pace_lock:
+    with _shared["pace_lock"]:
         now = time.monotonic()
-        wait = GLOBAL_MIN_REQUEST_INTERVAL - (now - _global_last_request_ts[0])
+        wait = GLOBAL_MIN_REQUEST_INTERVAL - (now - _shared["last_request_ts"])
         if wait > 0:
             time.sleep(wait)
-        _global_last_request_ts[0] = time.monotonic()
-
-# --- 同時実行数の制御（サーキットブレーカー） ---
-# 複数の利用者が同時に「リサーチを開始する」を押した場合、
-# MAX_CONCURRENT_RUNS を超える分は実行させず、待ってもらう。
-_active_runs_lock = threading.Lock()
-_active_runs = [0]
+        _shared["last_request_ts"] = time.monotonic()
 
 def try_acquire_run_slot():
-    with _active_runs_lock:
-        if _active_runs[0] >= MAX_CONCURRENT_RUNS:
+    with _shared["runs_lock"]:
+        if _shared["active_runs"] >= MAX_CONCURRENT_RUNS:
             return False
-        _active_runs[0] += 1
+        _shared["active_runs"] += 1
         return True
 
 def release_run_slot():
-    with _active_runs_lock:
-        _active_runs[0] = max(0, _active_runs[0] - 1)
+    with _shared["runs_lock"]:
+        _shared["active_runs"] = max(0, _shared["active_runs"] - 1)
 
 def get_active_runs():
-    with _active_runs_lock:
-        return _active_runs[0]
+    with _shared["runs_lock"]:
+        return _shared["active_runs"]
 
 max_items = st.sidebar.number_input(
     "🔢 取得する商品件数",
@@ -166,11 +172,6 @@ retry_base_wait = 2.0
 RETRY_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
 
 start_button = st.sidebar.button("🚀 リサーチを開始する", type="primary")
-
-if get_active_runs() >= MAX_CONCURRENT_RUNS:
-    st.sidebar.caption("🔴 現在、他の利用者が実行中です")
-else:
-    st.sidebar.caption("🟢 現在、すぐに実行できます")
 
 # フィルターエリア
 st.sidebar.markdown('---')
