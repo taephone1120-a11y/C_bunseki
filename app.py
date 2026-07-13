@@ -148,7 +148,7 @@ include_first_review_date = st.sidebar.checkbox(
 show_diagnostics = False
 skip_line_notify = False
 retry_count = 4
-retry_base_wait = 2.0
+retry_base_wait = 0.5
 
 RETRY_STATUS_CODES = {403, 408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
 
@@ -1256,7 +1256,7 @@ def scrape_creema_fast(start_url, max_num, include_eval_dates=True, include_firs
                 else:
                     diag_count("詳細解析_結果なし")
                 progress_bar.progress(min(current_idx / total_found, 1.0))
-                status_text.text(f"⏳ 解析中（{speed_mode}）... 完了: {current_idx} / {total_found} 件 / 成功: {len(scraped_data)} 件")
+                status_text.text(f"⏳ 解析中... 完了: {current_idx} / {total_found} 件 / 成功: {len(scraped_data)} 件")
         except BaseException:
             # 🛑 停止ボタン等でこの実行自体が打ち切られた場合、まだ着手していない
             # 残りタスクはすぐに諦めて（cancel_futures=True）、今動いている分の
